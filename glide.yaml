@@ -1,0 +1,16 @@
+package: github.com/BlocknetDX/dxregress
+import:
+- package: github.com/spf13/cobra
+  version: 1be1d2841c773c01bee8289f55f7463b6e2c2539
+- package: github.com/spf13/viper
+- package: github.com/mitchellh/go-homedir
+- package: github.com/pkg/errors
+  version: ~0.8.0
+- package: github.com/sirupsen/logrus
+  version: 1f76b120f8e2703d7ac03d931d2fb7224f4717bf
+  repo: https://github.com/magic53/logrus
+- package: github.com/rifflock/lfshook
+  version: ~1.6.0
+- package: gopkg.in/yaml.v2
+  repo: https://github.com/go-yaml/yaml
+- package: github.com/docker/docker
