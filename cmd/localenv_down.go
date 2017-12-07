@@ -70,7 +70,7 @@ var localenvDownCmd = &cobra.Command{
 		waitChan := make(chan bool, 1)
 		go func() {
 			// Stop and remove containers
-			if err := stopAllLocalEnvContainers(ctx, docker); err != nil {
+			if err := stopAllLocalEnvContainers(ctx, docker, false); err != nil {
 				logrus.Error(err)
 				waitChan <- false
 			} else {

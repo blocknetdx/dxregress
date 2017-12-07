@@ -59,7 +59,7 @@ func localEnvContainerFilter() string {
 }
 
 // stopAllLocalEnvContainers stops the existing localenv containers.
-func stopAllLocalEnvContainers(ctx context.Context, docker *client.Client) error {
+func stopAllLocalEnvContainers(ctx context.Context, docker *client.Client, suppressLogs bool) error {
 	containerList, err := containers.FindContainers(docker, localEnvContainerFilter())
 	if err != nil {
 		return err
@@ -75,10 +75,12 @@ func stopAllLocalEnvContainers(ctx context.Context, docker *client.Client) error
 		wg.Add(1)
 		go func(c types.Container) {
 			name := c.Names[0]
-			logrus.Infof("Removing localenv container %s, please wait...", name)
+			if !suppressLogs {
+				logrus.Infof("Removing localenv container %s, please wait...", name)
+			}
 			if err := containers.StopAndRemove(ctx, docker, c.ID); err != nil {
 				logrus.Errorf("Failed to remove %s: %s", name, err.Error())
-			} else {
+			} else if !suppressLogs {
 				logrus.Infof("Removed %s", name)
 			}
 			wg.Done()
@@ -167,6 +169,7 @@ logips=1                                    \n\
                                             \n\
 rpcuser=localenv                            \n\
 rpcpassword=test                            \n\
+rpcallowip=0.0.0.0/0                        \n\
 rpctimeout=15                               \n\
 rpcclienttimeout=15" > /opt/blockchain/config/blocknetdx.conf
 

@@ -70,13 +70,15 @@ var localenvUpCmd = &cobra.Command{
 		// localenv containers
 		type Node struct {
 			Name string
+			Port string
+			RPCPort string
+			DebuggerPort string
 			Ports nat.PortMap
 		}
-
 		localcs := []Node{
-			{"activator", getPortMap("41476", "41486") },
-			{"sn1", getPortMap("41477", "41487") },
-			{"sn2", getPortMap("41478", "41488") },
+			{"activator", "41476", "41426", "41486", getPortMap("41476", "41426", "41486") },
+			{"sn1", "41477", "41427", "41487", getPortMap("41477", "41427", "41487") },
+			{"sn2", "41478", "41428", "41488", getPortMap("41478", "41428", "41488") },
 		}
 
 		// Support interrupting container build process
@@ -92,7 +94,8 @@ var localenvUpCmd = &cobra.Command{
 			}
 
 			// Stop all localenv containers
-			if err := stopAllLocalEnvContainers(ctx, docker); err != nil {
+			logrus.Info("Removing previous localenv containers...")
+			if err := stopAllLocalEnvContainers(ctx, docker, true); err != nil {
 				logrus.Error(err)
 			}
 
@@ -102,6 +105,7 @@ var localenvUpCmd = &cobra.Command{
 					waitChan <- err
 					return
 				}
+				logrus.Infof("%s node running on %s, rpc on %s, gdb/lldb port on %s", c.Name, c.Port, c.RPCPort, c.DebuggerPort)
 			}
 
 			// success
@@ -124,6 +128,7 @@ var localenvUpCmd = &cobra.Command{
 			}
 		}
 
+		logrus.Info("Sample rpc call: blocknetdx-cli -rpcuser=localenv -rpcpassword=test -rpcport=41426 getinfo")
 		logrus.Info("Successfully started localenv")
 	},
 }
@@ -133,13 +138,16 @@ func init() {
 }
 
 // getPortMap returns the port map configuration for the specified port.
-func getPortMap(port, debug string) nat.PortMap {
+func getPortMap(port, rpc, debug string) nat.PortMap {
 	return nat.PortMap{
 		nat.Port("41475/tcp"): []nat.PortBinding{
 			{HostIP: "0.0.0.0", HostPort: debug},
 		},
 		nat.Port("41476/tcp"): []nat.PortBinding{
 			{HostIP: "0.0.0.0", HostPort: port},
+		},
+		nat.Port("41419/tcp"): []nat.PortBinding{
+			{HostIP: "0.0.0.0", HostPort: rpc},
 		},
 	}
 }
