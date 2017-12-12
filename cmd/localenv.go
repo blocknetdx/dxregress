@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/BlocknetDX/dxregress/chain"
 	"github.com/BlocknetDX/dxregress/containers"
 	"github.com/BlocknetDX/dxregress/util"
 	"github.com/docker/docker/api/types"
@@ -57,10 +58,11 @@ type Node struct {
 	Ports nat.PortMap
 }
 func (node Node) IP() string {
-	return "127.0.0.1:" + node.Port
+	return util.GetLocalIP() + ":" + node.Port
 }
 
 type SNode struct {
+	ID int
 	Alias string
 	IP string
 	Key string
@@ -96,13 +98,13 @@ func init() {
 }
 
 // localEnvContainerFilter returns the regex filter for the localenv containers.
-func localEnvContainerFilter() string {
-	return fmt.Sprintf(`^/%s[^\s]+$`, localenvPrefix)
+func localEnvContainerFilter(prefix string) string {
+	return fmt.Sprintf(`^/%s%s[^\s]+$`, localenvPrefix, prefix)
 }
 
 // stopAllLocalEnvContainers stops the existing localenv containers.
 func stopAllLocalEnvContainers(ctx context.Context, docker *client.Client, suppressLogs bool) error {
-	containerList, err := containers.FindContainers(docker, localEnvContainerFilter())
+	containerList, err := containers.FindContainers(docker, localEnvContainerFilter(""))
 	if err != nil {
 		return err
 	}
@@ -299,7 +301,7 @@ func servicenodeConf(snodes []SNode) string {
 }
 
 // blocknetdxConf returns a blocknetdx.conf with the specified parameters.
-func blocknetdxConf(currentNode int, servicenode bool, nodes []Node) string {
+func blocknetdxConf(currentNode int, nodes []Node, snodeKey string) string {
 	base := `datadir=/opt/blockchain/dxregress
 testnet=1
 dbcache=256
@@ -310,7 +312,6 @@ rpcport=41419
 
 listen=1
 server=1
-maxconnections=10
 logtimestamps=1
 logips=1
 
@@ -319,23 +320,53 @@ rpcpassword=test
 rpcallowip=0.0.0.0/0
 rpctimeout=15
 rpcclienttimeout=15
+
 `
 	localIP := util.GetLocalIP()
+	base += `whitelist=0.0.0.0/0
+`
+
+	var cnode Node
 	for _, node := range nodes {
 		// do not addnode to self
 		if node.ID == currentNode {
+			cnode = node
 			continue
 		}
 		base += fmt.Sprintf("connect=%s:%s\n", localIP, node.Port)
 	}
-	// Add servicenode config
-	if servicenode {
 
+	// Add servicenode config
+	if snodeKey != "" {
+		base += `
+staking=0
+servicenode=1
+servicenodeaddr=`+fmt.Sprintf("%s:%s", localIP, cnode.Port)+`
+servicenodeprivkey=`+snodeKey+`
+`
+	} else { // support staking on non-servicenode clients
+		base += `staking=1
+`
 	}
 	return base
+}
+
+// xbridgeConf returns the xbridge configuration with the specified wallets.
+func xbridgeConf(wallets []string) string {
+	ip := util.GetLocalIP()
+	conf := chain.MAIN(wallets)
+	for _, wallet := range wallets {
+		conf += chain.DefaultXConfig(wallet, "", ip, "localenv", "test") + "\n"
+	}
+	return conf
 }
 
 // dxregressContainerName returns a valid dxregress container name.
 func dxregressContainerName(name string) string {
 	return localenvPrefix + name
+}
+
+// testBlocknetConf
+func testBlocknetConf() string {
+	return blocknetdxConf(-1, localContainers, "")
 }

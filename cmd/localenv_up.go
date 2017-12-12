@@ -16,6 +16,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"path"
@@ -23,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/BlocknetDX/dxregress/chain"
 	"github.com/BlocknetDX/dxregress/containers"
 	"github.com/BlocknetDX/dxregress/util"
 	"github.com/docker/docker/api/types"
@@ -34,6 +36,7 @@ import (
 )
 
 const cliPath = "src/blocknetdx-cli"
+var p_wallets []string
 
 // localenvUpCmd represents the up command
 var localenvUpCmd = &cobra.Command{
@@ -48,6 +51,18 @@ var localenvUpCmd = &cobra.Command{
 			logrus.Errorf("Invalid codebase directory: %s", codedir)
 			stop()
 			return
+		}
+
+		// Check that wallets are valid
+		if len(p_wallets) == 0 {
+			logrus.Warn("No wallets specified. Use the --wallets flag: -w=SYS,MONA")
+		}
+		for _, wallet := range p_wallets {
+			if !chain.SupportsWallet(wallet) {
+				logrus.Errorf("Unsupported wallet %s", wallet)
+				stop()
+				return
+			}
 		}
 
 		// Check if cli exists
@@ -69,6 +84,19 @@ var localenvUpCmd = &cobra.Command{
 		dockerfile := path.Join(codedir, dockerFilePath)
 		if err := containers.CreateDockerfile(dockerFile(), dockerfile); err != nil {
 			logrus.Error(err)
+			stop()
+			return
+		}
+
+		// Write test blocknetdx.conf file
+		testLocalenvDir := path.Dir(testBlocknetConfFile())
+		if err := os.MkdirAll(testLocalenvDir, 0775); err != nil {
+			logrus.Error(errors.Wrapf(err, "Failed to create localenv directory %s", testLocalenvDir))
+			stop()
+			return
+		}
+		if err := ioutil.WriteFile(testBlocknetConfFile(), []byte(testBlocknetConf()), 0644); err != nil {
+			logrus.Error(errors.Wrapf(err, "Failed to write localenv blocknetdx.conf %s", testBlocknetConfFile()))
 			stop()
 			return
 		}
@@ -146,12 +174,17 @@ var localenvUpCmd = &cobra.Command{
 		for _, node := range localContainers {
 			logrus.Infof("Sample rpc call %s: blocknetdx-cli -rpcuser=localenv -rpcpassword=test -rpcport=%s getinfo", node.ShortName, node.RPCPort)
 		}
+		logrus.Infof("Test blocknetdx.conf file here: %s", testBlocknetConfFile())
+		if len(p_wallets) > 0 {
+			logrus.Infof("Wallets enabled: %s", strings.Join(p_wallets, ","))
+		}
 		logrus.Info("Successfully started localenv")
 	},
 }
 
 func init() {
 	localenvCmd.AddCommand(localenvUpCmd)
+	localenvUpCmd.Flags().StringSliceVarP(&p_wallets, "wallets", "w", []string{}, "Test wallets")
 }
 
 // waitForLoadenv will block for a maximum of 30 seconds until the local environment is ready. The
@@ -202,6 +235,7 @@ func waitForLoadenv(parentContext context.Context, nodes []Node) error {
 	return nil
 }
 
+// setupChain will setup the DX environment, copy all configuration files, test RPC connectivity.
 func setupChain(ctx context.Context, docker *client.Client) error {
 	// activator wallet address: y5zBd8oLQSnTjChTUCfRieTAp5Z31bRwEV key: cQiWHyehhhsRFYadBpj5wQRU9HU23GtHSjyPY2hBLccHWeNq6iTY
 	// sn1 alias address: y3DT9bZ69AjvdQFzYTCSpFgT9wJcRpHi7T key: cRdLcWroNyJPJ1BH4Q24pamDQtE3JNdm7tGQoD6mm9brqpYuX1dC
@@ -281,24 +315,26 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 		return errors.Wrap(err, "Failed to parse servicenode outputs")
 	}
 
-	// SNode containers
+	// Nodes
 	activator := localContainerForNode(Activator)
 	sn1 := localContainerForNode(Sn1)
 	sn2 := localContainerForNode(Sn2)
 
+	// Servicenodes
+	ssn1 := SNode{ ID:Sn1, Alias:sn1.ShortName, IP:sn1.IP(), Key:keys[0], CollateralID:outputs[0].TxID, CollateralPos:strconv.Itoa(outputs[0].TxPos) }
+	ssn2 := SNode{ ID:Sn2, Alias:sn2.ShortName, IP:sn2.IP(), Key:keys[1], CollateralID:outputs[1].TxID, CollateralPos:strconv.Itoa(outputs[1].TxPos) }
+	snodes := []SNode{ ssn1, ssn2 }
+
 	activatorC := containers.FindContainer(docker, activator.Name)
-	sn1C := containers.FindContainer(docker, activator.Name)
-	sn2C := containers.FindContainer(docker, activator.Name)
+	sn1C := containers.FindContainer(docker, sn1.Name)
+	sn2C := containers.FindContainer(docker, sn2.Name)
 
 	// Max wait time for all commands below
-	ctx, cancel := context.WithTimeout(context.Background(), 30 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
 	defer cancel()
 
 	// Generate activator servicenode.conf
-	snConf := servicenodeConf([]SNode{
-		{ Alias:sn1.ShortName, IP:sn1.IP(), Key:keys[0], CollateralID:outputs[0].TxID, CollateralPos:strconv.Itoa(outputs[0].TxPos) },
-		{ Alias:sn2.ShortName, IP:sn2.IP(), Key:keys[1], CollateralID:outputs[1].TxID, CollateralPos:strconv.Itoa(outputs[1].TxPos) },
-	})
+	snConf := servicenodeConf(snodes)
 	// Copy activator servicenode.conf
 	if servicenodeConf, err := util.CreateTar(map[string][]byte{ "servicenode.conf": []byte(snConf) }); err == nil {
 		if err := docker.CopyToContainer(ctx, activatorC.ID, "/opt/blockchain/dxregress/testnet4/", servicenodeConf, types.CopyToContainerOptions{}); err != nil {
@@ -309,7 +345,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	}
 
 	// Update activator blocknetdx.conf
-	blocknetConfActivator := blocknetdxConf(Activator, false, localContainers)
+	blocknetConfActivator := blocknetdxConf(Activator, localContainers, "")
 	if bufActivator, err := util.CreateTar(map[string][]byte{ "blocknetdx.conf": []byte(blocknetConfActivator) }); err == nil {
 		if err := docker.CopyToContainer(ctx, activatorC.ID, "/opt/blockchain/config/", bufActivator, types.CopyToContainerOptions{}); err != nil {
 			return errors.Wrap(err, "Failed to write blocknetdx.conf to activator")
@@ -319,7 +355,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	}
 
 	// Update sn1 blocknetdx.conf
-	blocknetConfSn1 := blocknetdxConf(Sn1, true, localContainers)
+	blocknetConfSn1 := blocknetdxConf(Sn1, localContainers, ssn1.Key)
 	if bufSn1, err := util.CreateTar(map[string][]byte{ "blocknetdx.conf": []byte(blocknetConfSn1) }); err == nil {
 		if err := docker.CopyToContainer(ctx, sn1C.ID, "/opt/blockchain/config/", bufSn1, types.CopyToContainerOptions{}); err != nil {
 			return errors.Wrap(err, "Failed to write blocknetdx.conf to sn1")
@@ -329,7 +365,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	}
 
 	// Update sn2 blocknetdx.conf
-	blocknetConfSn2 := blocknetdxConf(Sn2, true, localContainers)
+	blocknetConfSn2 := blocknetdxConf(Sn2, localContainers, ssn2.Key)
 	if bufSn2, err := util.CreateTar(map[string][]byte{ "blocknetdx.conf": []byte(blocknetConfSn2) }); err == nil {
 		if err := docker.CopyToContainer(ctx, sn2C.ID, "/opt/blockchain/config/", bufSn2, types.CopyToContainerOptions{}); err != nil {
 			return errors.Wrap(err, "Failed to write blocknetdx.conf to sn2")
@@ -338,23 +374,60 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 		return errors.Wrap(err, "Failed to write blocknetdx.conf to sn2")
 	}
 
-	// Restart all nodes
-	if err := containers.RestartContainers(ctx, docker, localEnvContainerFilter()); err != nil {
+	// Write sn1 & sn2 xbridge.conf
+	xbridgeConfSnode := xbridgeConf(p_wallets)
+	if bufSn, err := util.CreateTar(map[string][]byte{ "xbridge.conf": []byte(xbridgeConfSnode) }); err == nil {
+		if err := docker.CopyToContainer(ctx, sn1C.ID, "/opt/blockchain/dxregress/", bufSn, types.CopyToContainerOptions{}); err != nil {
+			return errors.Wrap(err, "Failed to write xbridge.conf to sn1")
+		}
+		if err := docker.CopyToContainer(ctx, sn2C.ID, "/opt/blockchain/dxregress/", bufSn, types.CopyToContainerOptions{}); err != nil {
+			return errors.Wrap(err, "Failed to write xbridge.conf to sn2")
+		}
+	} else {
+		return errors.Wrap(err, "Failed to write xbridge.conf")
+	}
+
+	// Stop activator
+	if err := containers.StopContainer(ctx, docker, activatorC.ID); err != nil {
 		return err
 	}
 
-	// Wait for nodes to be ready
+	// Restart all nodes
+	if err := containers.RestartContainers(ctx, docker, localEnvContainerFilter("")); err != nil {
+		return err
+	}
+
+	// Wait for service nodes to be ready
 	if err := waitForLoadenv(ctx, localContainers); err != nil {
 		return err
 	}
 
-	// Run servicenode start-all on activator
-	cmdStartAll := rpcCommand(Activator, "servicenode start-all")
-	if output, err := cmdStartAll.Output(); err != nil {
-		return errors.Wrap(err, "Failed to run start-all on activator")
-	} else {
-		logrus.Debug(string(output))
+	// Start servicenodes
+	if err := startAllServicenodes(); err != nil {
+		return err
 	}
+
+	// Wait before restarting staker
+	time.Sleep(10 * time.Second)
+
+	// Restart the activator to trigger staking
+	if err := containers.RestartContainers(ctx, docker, localEnvContainerFilter("act")); err != nil {
+		return err
+	}
+
+	// Wait for activator to be ready
+	if err := waitForLoadenv(ctx, []Node{activator}); err != nil {
+		return err
+	}
+
+	// Call start servicenodes a second time to make sure they're started
+	// Wait before re-running snode command
+	time.Sleep(5 * time.Second)
+	if err := startAllServicenodes(); err != nil {
+		return err
+	}
+
+	// TODO Check if wallets are reachable
 
 	return nil
 }
@@ -372,4 +445,21 @@ func getPortMap(port, rpc, debug string) nat.PortMap {
 			{HostIP: "0.0.0.0", HostPort: rpc},
 		},
 	}
+}
+
+// startServicenodes calls the servicenode start-all command on the activator.
+func startAllServicenodes() error {
+	// Run servicenode start-all on activator
+	cmdStartAll := rpcCommand(Activator, "servicenode start-all")
+	if output, err := cmdStartAll.Output(); err != nil {
+		return errors.Wrap(err, "Failed to run start-all on activator")
+	} else {
+		logrus.Debug(string(output))
+	}
+	return nil
+}
+
+// testBlocknetConfFile returns the path to the test blocknetdx.conf.
+func testBlocknetConfFile() string {
+	return path.Join(getConfigPath(), "localenv/blocknetdx.conf")
 }

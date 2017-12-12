@@ -2,22 +2,12 @@
 
 Regression tester for BlocknetDX.
 
-# Commands
-
-The tool looks for a `.dxregress.yml` config at `$HOME/.dxregress.yml`.
-Use `--config=` to load configurations of various trading setups.
-
-# Creating localenv
-
-```
-dxregress localenv up /path/to/codebase
-dxregress localenv down /path/to/codebase
-```
+The tool uses a `.dxregress.yml` config at `$HOME/.dxregress.yml`.
+Use `--config=` to load configurations of various setups.
 
 # Setup
 
 * Docker CE is required: https://www.docker.com/community-edition#/download
-* Docker Compose is required: https://docs.docker.com/compose/install/
 
 `dxregress` utilizes glide package management https://glide.sh
 To pull vendor source:
@@ -25,7 +15,20 @@ To pull vendor source:
 ```
 go get github.com/Masterminds/glide
 cd /path/to/dxregress
-glide up
+glide install -v
+```
+
+# Creating localenv
+
+```
+# Help
+dxregress localenv -h
+
+# Power up localenv with SYS,MONA wallet support
+dxregress localenv up -w=SYS,MONA /path/to/codebase
+
+# Power down the localenv
+dxregress localenv down /path/to/codebase
 ```
 
 # Copyright

@@ -3,9 +3,11 @@ package util
 import (
 	"archive/tar"
 	"bytes"
+	"fmt"
 	"io"
 	"net"
 	"os"
+	"regexp"
 )
 
 // FileExists returns true if the path exists.
@@ -31,6 +33,16 @@ func GetLocalIP() string {
 		}
 	}
 	return ""
+}
+
+// Get24CIDR returns the /24 CIDR for the specified ip address.
+func Get24CIDR(ip string) string {
+	re := regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)\.(\d+)$`)
+	matches := re.FindStringSubmatch(ip)
+	if len(matches) <= 1 {
+		return ""
+	}
+	return fmt.Sprintf("%s.%s.%s.0/24", matches[1], matches[2], matches[3])
 }
 
 // CreateTar creates a tar file from a map of files.
