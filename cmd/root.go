@@ -55,17 +55,6 @@ func init() {
 	// Load config
 	cobra.OnInitialize(initConfig)
 
-	// Setup logger
-	logrus.SetOutput(RootCmd.OutOrStdout())
-	lvlHooks := make(logrus.LevelHooks)
-	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp:true})
-	logrus.SetLevel(logrus.InfoLevel)
-	for _, hooks := range lvlHooks {
-		for _, hook := range hooks {
-			logrus.AddHook(hook)
-		}
-	}
-
 	// Default flags
 	RootCmd.PersistentFlags().StringVar(&p_config, "config", "", "config file")
 	RootCmd.Flags().BoolVarP(&p_version, "version", "v", false, "Print version")
@@ -89,10 +78,26 @@ func initConfig() {
 		viper.SetConfigName("dxregress")
 	}
 
+	viper.SetEnvPrefix("DX")
 	viper.AutomaticEnv() // read in environment variables that match
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
 		logrus.Info("Using config file:", viper.ConfigFileUsed())
+	}
+
+	// Setup logger
+	logrus.SetOutput(RootCmd.OutOrStdout())
+	lvlHooks := make(logrus.LevelHooks)
+	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp:true})
+	if viper.GetBool("DEBUG") {
+		logrus.SetLevel(logrus.DebugLevel)
+	} else {
+		logrus.SetLevel(logrus.InfoLevel)
+	}
+	for _, hooks := range lvlHooks {
+		for _, hook := range hooks {
+			logrus.AddHook(hook)
+		}
 	}
 }

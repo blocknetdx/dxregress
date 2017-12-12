@@ -15,17 +15,25 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/signal"
 	"path"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/BlocknetDX/dxregress/containers"
 	"github.com/BlocknetDX/dxregress/util"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
+
+const cliPath = "src/blocknetdx-cli"
 
 // localenvUpCmd represents the up command
 var localenvUpCmd = &cobra.Command{
@@ -35,9 +43,17 @@ var localenvUpCmd = &cobra.Command{
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// Obtain the codebase directory
-		codedir := args[0]
+		codedir = args[0]
 		if !util.FileExists(codedir) {
 			logrus.Errorf("Invalid codebase directory: %s", codedir)
+			stop()
+			return
+		}
+
+		// Check if cli exists
+		cliFilePath := path.Join(codedir, cliPath)
+		if !util.FileExists(cliFilePath) {
+			logrus.Errorf("blocknetdx-cli missing from %s did you build first?", cliFilePath)
 			stop()
 			return
 		}
@@ -67,24 +83,11 @@ var localenvUpCmd = &cobra.Command{
 		}
 		defer docker.Close()
 
-		// localenv containers
-		type Node struct {
-			Name string
-			Port string
-			RPCPort string
-			DebuggerPort string
-			Ports nat.PortMap
-		}
-		localcs := []Node{
-			{"activator", "41476", "41426", "41486", getPortMap("41476", "41426", "41486") },
-			{"sn1", "41477", "41427", "41487", getPortMap("41477", "41427", "41487") },
-			{"sn2", "41478", "41428", "41488", getPortMap("41478", "41428", "41488") },
-		}
-
 		// Support interrupting container build process
+		waitChan := make(chan error, 1)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		waitChan := make(chan error, 1)
+
 		// Build localenv image, report results on waitChan
 		go func() {
 			logrus.Info("Building localenv container image, please wait...")
@@ -100,12 +103,24 @@ var localenvUpCmd = &cobra.Command{
 			}
 
 			// Start localenv containers
-			for _, c := range localcs {
-				if err := containers.CreateAndStart(ctx, docker, containerImage, dxregressContainerName(c.Name), c.Ports); err != nil {
+			for _, c := range localContainers {
+				if err := containers.CreateAndStart(ctx, docker, containerImage, c.Name, c.Ports); err != nil {
 					waitChan <- err
 					return
 				}
 				logrus.Infof("%s node running on %s, rpc on %s, gdb/lldb port on %s", c.Name, c.Port, c.RPCPort, c.DebuggerPort)
+			}
+
+			logrus.Info("Waiting for localenv to be ready...")
+			if err := waitForLoadenv(ctx, localContainers); err != nil {
+				waitChan <- err
+				return
+			}
+
+			// Setup blockchain
+			if err := setupChain(ctx, docker); err != nil {
+				waitChan <- err
+				return
 			}
 
 			// success
@@ -128,13 +143,220 @@ var localenvUpCmd = &cobra.Command{
 			}
 		}
 
-		logrus.Info("Sample rpc call: blocknetdx-cli -rpcuser=localenv -rpcpassword=test -rpcport=41426 getinfo")
+		for _, node := range localContainers {
+			logrus.Infof("Sample rpc call %s: blocknetdx-cli -rpcuser=localenv -rpcpassword=test -rpcport=%s getinfo", node.ShortName, node.RPCPort)
+		}
 		logrus.Info("Successfully started localenv")
 	},
 }
 
 func init() {
 	localenvCmd.AddCommand(localenvUpCmd)
+}
+
+// waitForLoadenv will block for a maximum of 30 seconds until the local environment is ready. The
+// getinfo rpc call is checked once every 2 seconds. This method returns if getinfo returns no
+// error.
+func waitForLoadenv(parentContext context.Context, nodes []Node) error {
+	// Wait max 30 seconds for environment to provision
+	ctx, cancel := context.WithTimeout(parentContext, time.Second * 45)
+	defer cancel()
+
+	waitChan := make(chan error, 1)
+	waitChanCancel := make(chan bool, 1)
+	go func() {
+		Done:
+			for {
+				select {
+				case <-waitChanCancel:
+					break Done
+				default:
+					ready := true
+					for _, node := range nodes {
+						cmd := rpcCommand(node.ID, "getinfo")
+						if err := cmd.Run(); err != nil {
+							ready = false
+						}
+					}
+					if ready {
+						waitChan <- nil
+						break Done
+					}
+				}
+				time.Sleep(2 * time.Second)
+			}
+	}()
+
+	select {
+	case err := <-waitChan:
+		if err != nil {
+			return err
+		}
+	case <-ctx.Done():
+		waitChanCancel <- true
+		if ctx.Err() != nil {
+			return errors.Wrap(ctx.Err(), "Timeout occurred while waiting for localenv to start up")
+		}
+	}
+
+	return nil
+}
+
+func setupChain(ctx context.Context, docker *client.Client) error {
+	// activator wallet address: y5zBd8oLQSnTjChTUCfRieTAp5Z31bRwEV key: cQiWHyehhhsRFYadBpj5wQRU9HU23GtHSjyPY2hBLccHWeNq6iTY
+	// sn1 alias address: y3DT9bZ69AjvdQFzYTCSpFgT9wJcRpHi7T key: cRdLcWroNyJPJ1BH4Q24pamDQtE3JNdm7tGQoD6mm9brqpYuX1dC
+	// sn2 alias address: yF2E6wPBc1YosrGUMhgoet5zPat1A4Z87d key: cMn9aiQGBYqeRzRuTFAModv459UQNxGsXkgPSRQ1W7XwGdGCp1JB
+
+	// First import test address into alias and then generate test coin
+	cmd := rpcCommands(Activator, []string{"importprivkey cQiWHyehhhsRFYadBpj5wQRU9HU23GtHSjyPY2hBLccHWeNq6iTY coin", "setgenerate true 25"})
+	if output, err := cmd.Output(); err != nil {
+		return errors.Wrap(err, "Failed to generate first 25 blocks")
+	} else {
+		logrus.Debug(string(output))
+	}
+
+	// Import alias addresses
+	cmd2 := rpcCommands(Activator, []string{"importprivkey cRdLcWroNyJPJ1BH4Q24pamDQtE3JNdm7tGQoD6mm9brqpYuX1dC sn1", "importprivkey cMn9aiQGBYqeRzRuTFAModv459UQNxGsXkgPSRQ1W7XwGdGCp1JB sn2"})
+	if output, err := cmd2.Output(); err != nil {
+		return errors.Wrap(err, "Failed to import alias addresses")
+	} else {
+		logrus.Debug(string(output))
+	}
+
+	// Send 5k servicenode coin to each alias
+	cmd3 := rpcCommands(Activator, []string{"sendtoaddress y3DT9bZ69AjvdQFzYTCSpFgT9wJcRpHi7T 5000", "sendtoaddress yF2E6wPBc1YosrGUMhgoet5zPat1A4Z87d 5000"})
+	if output, err := cmd3.Output(); err != nil {
+		return errors.Wrap(err, "Failed to send 5k servicenode coin")
+	} else {
+		logrus.Debug(string(output))
+	}
+
+	// Break up 10K inputs into 2.5k inputs to help with staking
+	cmd4S := make([]string, 75)
+	for i := 0; i < len(cmd4S); i++ {
+		cmd4S[i] = "sendtoaddress y5zBd8oLQSnTjChTUCfRieTAp5Z31bRwEV 2500"
+	}
+	cmd4 := rpcCommands(Activator, cmd4S)
+	if output, err := cmd4.Output(); err != nil {
+		return errors.Wrap(err, "Failed to split coin")
+	} else {
+		logrus.Debug(string(output))
+	}
+
+	// Generate last 25 PoW blocks
+	cmd5 := rpcCommand(Activator, "setgenerate true 25")
+	if output, err := cmd5.Output(); err != nil {
+		return errors.Wrap(err, "Failed to generate blocks 25-50")
+	} else {
+		logrus.Debug(string(output))
+	}
+
+	// Obtain servicenode keys
+	var keys []string
+	cmd6A := rpcCommand(Sn1, "servicenode genkey")
+	if output, err := cmd6A.Output(); err != nil {
+		return errors.Wrap(err, "Failed to call genkey on sn1")
+	} else {
+		keys = append(keys, strings.TrimSpace(string(output)))
+	}
+	cmd6B := rpcCommand(Sn2, "servicenode genkey")
+	if output, err := cmd6B.Output(); err != nil {
+		return errors.Wrap(err, "Failed to call genkey on sn2")
+	} else {
+		keys = append(keys, strings.TrimSpace(string(output)))
+	}
+
+	// Setup activator servicenode.conf
+	type OutputsResponse struct {
+		TxID string `json:"txhash"`
+		TxPos int `json:"outputidx"`
+	}
+	cmd7 := rpcCommand(Activator, "servicenode outputs")
+	output, err := cmd7.Output()
+	if err != nil {
+		return errors.Wrap(err, "Failed to parse servicenode outputs")
+	}
+	var outputs []OutputsResponse
+	if err := json.Unmarshal(output, &outputs); err != nil {
+		return errors.Wrap(err, "Failed to parse servicenode outputs")
+	}
+
+	// SNode containers
+	activator := localContainerForNode(Activator)
+	sn1 := localContainerForNode(Sn1)
+	sn2 := localContainerForNode(Sn2)
+
+	activatorC := containers.FindContainer(docker, activator.Name)
+	sn1C := containers.FindContainer(docker, activator.Name)
+	sn2C := containers.FindContainer(docker, activator.Name)
+
+	// Max wait time for all commands below
+	ctx, cancel := context.WithTimeout(context.Background(), 30 * time.Second)
+	defer cancel()
+
+	// Generate activator servicenode.conf
+	snConf := servicenodeConf([]SNode{
+		{ Alias:sn1.ShortName, IP:sn1.IP(), Key:keys[0], CollateralID:outputs[0].TxID, CollateralPos:strconv.Itoa(outputs[0].TxPos) },
+		{ Alias:sn2.ShortName, IP:sn2.IP(), Key:keys[1], CollateralID:outputs[1].TxID, CollateralPos:strconv.Itoa(outputs[1].TxPos) },
+	})
+	// Copy activator servicenode.conf
+	if servicenodeConf, err := util.CreateTar(map[string][]byte{ "servicenode.conf": []byte(snConf) }); err == nil {
+		if err := docker.CopyToContainer(ctx, activatorC.ID, "/opt/blockchain/dxregress/testnet4/", servicenodeConf, types.CopyToContainerOptions{}); err != nil {
+			return errors.Wrap(err, "Failed to write servicenode.conf to activator")
+		}
+	} else {
+		return errors.Wrap(err, "Failed to write servicenode.conf to activator")
+	}
+
+	// Update activator blocknetdx.conf
+	blocknetConfActivator := blocknetdxConf(Activator, false, localContainers)
+	if bufActivator, err := util.CreateTar(map[string][]byte{ "blocknetdx.conf": []byte(blocknetConfActivator) }); err == nil {
+		if err := docker.CopyToContainer(ctx, activatorC.ID, "/opt/blockchain/config/", bufActivator, types.CopyToContainerOptions{}); err != nil {
+			return errors.Wrap(err, "Failed to write blocknetdx.conf to activator")
+		}
+	} else {
+		return errors.Wrap(err, "Failed to write blocknetdx.conf to activator")
+	}
+
+	// Update sn1 blocknetdx.conf
+	blocknetConfSn1 := blocknetdxConf(Sn1, true, localContainers)
+	if bufSn1, err := util.CreateTar(map[string][]byte{ "blocknetdx.conf": []byte(blocknetConfSn1) }); err == nil {
+		if err := docker.CopyToContainer(ctx, sn1C.ID, "/opt/blockchain/config/", bufSn1, types.CopyToContainerOptions{}); err != nil {
+			return errors.Wrap(err, "Failed to write blocknetdx.conf to sn1")
+		}
+	} else {
+		return errors.Wrap(err, "Failed to write blocknetdx.conf to sn1")
+	}
+
+	// Update sn2 blocknetdx.conf
+	blocknetConfSn2 := blocknetdxConf(Sn2, true, localContainers)
+	if bufSn2, err := util.CreateTar(map[string][]byte{ "blocknetdx.conf": []byte(blocknetConfSn2) }); err == nil {
+		if err := docker.CopyToContainer(ctx, sn2C.ID, "/opt/blockchain/config/", bufSn2, types.CopyToContainerOptions{}); err != nil {
+			return errors.Wrap(err, "Failed to write blocknetdx.conf to sn2")
+		}
+	} else {
+		return errors.Wrap(err, "Failed to write blocknetdx.conf to sn2")
+	}
+
+	// Restart all nodes
+	if err := containers.RestartContainers(ctx, docker, localEnvContainerFilter()); err != nil {
+		return err
+	}
+
+	// Wait for nodes to be ready
+	if err := waitForLoadenv(ctx, localContainers); err != nil {
+		return err
+	}
+
+	// Run servicenode start-all on activator
+	cmdStartAll := rpcCommand(Activator, "servicenode start-all")
+	if output, err := cmdStartAll.Output(); err != nil {
+		return errors.Wrap(err, "Failed to run start-all on activator")
+	} else {
+		logrus.Debug(string(output))
+	}
+
+	return nil
 }
 
 // getPortMap returns the port map configuration for the specified port.

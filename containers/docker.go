@@ -1,6 +1,8 @@
 package containers
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,14 +14,15 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/BlocknetDX/dxregress/chain"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/go-connections/nat"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -87,6 +90,23 @@ func FindContainers(docker *client.Client, regex string) ([]types.Container, err
 	return containers, nil
 }
 
+// FindContainer returns the container matching the specified name.
+func FindContainer(docker *client.Client, name string) types.Container {
+	cs, err := FindContainers(docker, "^/" + name + "$")
+	if err != nil {
+		logrus.Error(errors.Wrapf(err, "Failed to find container with name %s", name))
+		return types.Container{}
+	}
+	if len(cs) < 1 {
+		logrus.Error(errors.Wrapf(err, "Failed to find container with name %s", name))
+		return types.Container{}
+	}
+	if len(cs) > 1 {
+		logrus.Warn("Multiple containers matched [%s], returning first found", name)
+	}
+	return cs[0]
+}
+
 // StopAndRemove stops the container if it's already running and then removes the container.
 func StopAndRemove(ctx context.Context, docker *client.Client, id string) error {
 	result, err := docker.ContainerInspect(ctx, id)
@@ -139,10 +159,47 @@ func RemoveContainer(ctx context.Context, docker *client.Client, id string) erro
 	return docker.ContainerRemove(ctx, id, types.ContainerRemoveOptions{Force:true})
 }
 
+// RestartContainers restarts all the containers matching the specified filter. The container
+// will timeout after 30 seconds if the container's restart command hangs.
+func RestartContainers(ctx context.Context, docker *client.Client, filter string) error {
+	containers, err := FindContainers(docker, filter)
+	if err != nil {
+		return err
+	}
+	// Restart all nodes
+	waitChan := make(chan error, 1)
+	wg := new(sync.WaitGroup)
+	for _, c := range containers {
+		wg.Add(1)
+		go func(c types.Container) {
+			dur := time.Duration(30 * time.Second)
+			if err := docker.ContainerRestart(ctx, c.ID, &dur); err != nil {
+				logrus.Error(errors.Wrapf(err, "Failed to restart the container %s %s", c.Names[0], c.ID))
+			}
+			wg.Done()
+		}(c)
+	}
+	go func() {
+		wg.Wait()
+		waitChan <- nil
+	}()
+
+	select {
+	case <-ctx.Done():
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	case <-waitChan:
+	}
+
+	return nil
+}
+
 // BuildImage builds image from path
 func BuildImage(ctx context.Context, docker *client.Client, dir, dockerFile, imageName string) error {
+	tarBuf := new(bytes.Buffer)
+	tw := tar.NewWriter(tarBuf)
 	// Prep context in tar
-	var includeFiles []string
 	if err := filepath.Walk(dir, func(f string, info os.FileInfo, err error) error {
 		if err != nil {
 			logrus.Error(err)
@@ -150,22 +207,42 @@ func BuildImage(ctx context.Context, docker *client.Client, dir, dockerFile, ima
 		}
 		baseFilePath := strings.TrimLeft(strings.Replace(f, dir, "", 1), "/")
 		baseFile := path.Base(f)
-		if info.IsDir() || (baseFile != ".dockerignore" && strings.HasPrefix(baseFile, ".") || strings.Contains(f, ".git")) { // TODO Allow .dockerignore
+		if info.IsDir() || (baseFile != ".dockerignore" && strings.HasPrefix(baseFile, ".") ||
+			strings.Contains(f, ".git") || strings.HasSuffix(baseFile, ".o") ||
+			strings.HasSuffix(baseFile, ".a")) {
 			return nil
 		}
-		includeFiles = append(includeFiles, baseFilePath)
+		tarFileBytes, err := ioutil.ReadFile(f)
+		hdr := &tar.Header{
+			Name: baseFilePath,
+			Mode: 0655,
+			Size: int64(len(tarFileBytes)),
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			logrus.Error(err)
+		}
+		if _, err := tw.Write(tarFileBytes); err != nil {
+			logrus.Error(err)
+		}
 		return nil
 	}); err != nil {
 		return errors.Wrapf(err, "Failed to build image from source %s", dir)
 	}
-	tarOpts := &archive.TarOptions{
-		Compression: archive.Uncompressed,
-		IncludeFiles: includeFiles,
-		ExcludePatterns: []string{".git*", "*.a", "*.o", ".*"},
+	// Add default wallet file
+	walletFile := chain.WalletData()
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "wallet.dat",
+		Mode: 0600,
+		Size: int64(len(walletFile)),
+	}); err != nil {
+		logrus.Error(err)
 	}
-	dockerContext, err := archive.TarWithOptions(dir, tarOpts)
-	if err != nil {
-		return errors.Wrapf(err, "Failed to build image from source %s", dir)
+	if _, err := tw.Write(walletFile); err != nil {
+		logrus.Error(err)
+	}
+	// Close tar file
+	if err := tw.Close(); err != nil {
+		return err
 	}
 
 	// Build and set labels
@@ -178,7 +255,7 @@ func BuildImage(ctx context.Context, docker *client.Client, dir, dockerFile, ima
 		Labels: labels,
 		Tags: []string{imageName},
 	}
-	buildResponse, err := docker.ImageBuild(ctx, dockerContext, buildOpts)
+	buildResponse, err := docker.ImageBuild(ctx, tarBuf, buildOpts)
 	if err != nil {
 		return errors.Wrapf(err, "Failed to build image from source %s", dir)
 	}
