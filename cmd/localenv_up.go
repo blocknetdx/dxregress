@@ -36,14 +36,15 @@ import (
 )
 
 const cliPath = "src/blocknetdx-cli"
+
 var p_wallets []string
 
 // localenvUpCmd represents the up command
 var localenvUpCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Creates a new test environment from the local codebase",
-	Long: `The path to the codebase must be specified in the command.`,
-	Args: cobra.ExactArgs(1),
+	Long:  `The path to the codebase must be specified in the command.`,
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// Obtain the codebase directory
 		codedir = args[0]
@@ -74,7 +75,7 @@ var localenvUpCmd = &cobra.Command{
 		}
 
 		// Apply genesis patch to codebase
-		if err := util.GitApplyPatch(genesisPatch(), path.Join(getConfigPath(), genesisPatchFile), codedir); err != nil {
+		if err := util.GitApplyPatch(chain.GenesisPatchV1(), path.Join(getConfigPath(), genesisPatchFile), codedir); err != nil {
 			logrus.Error(err)
 			stop()
 			return
@@ -192,32 +193,32 @@ func init() {
 // error.
 func waitForLoadenv(parentContext context.Context, nodes []Node) error {
 	// Wait max 30 seconds for environment to provision
-	ctx, cancel := context.WithTimeout(parentContext, time.Second * 45)
+	ctx, cancel := context.WithTimeout(parentContext, time.Second*45)
 	defer cancel()
 
 	waitChan := make(chan error, 1)
 	waitChanCancel := make(chan bool, 1)
 	go func() {
-		Done:
-			for {
-				select {
-				case <-waitChanCancel:
-					break Done
-				default:
-					ready := true
-					for _, node := range nodes {
-						cmd := rpcCommand(node.ID, "getinfo")
-						if err := cmd.Run(); err != nil {
-							ready = false
-						}
-					}
-					if ready {
-						waitChan <- nil
-						break Done
+	Done:
+		for {
+			select {
+			case <-waitChanCancel:
+				break Done
+			default:
+				ready := true
+				for _, node := range nodes {
+					cmd := rpcCommand(node.ID, "getinfo")
+					if err := cmd.Run(); err != nil {
+						ready = false
 					}
 				}
-				time.Sleep(2 * time.Second)
+				if ready {
+					waitChan <- nil
+					break Done
+				}
 			}
+			time.Sleep(2 * time.Second)
+		}
 	}()
 
 	select {
@@ -302,8 +303,8 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 
 	// Setup activator servicenode.conf
 	type OutputsResponse struct {
-		TxID string `json:"txhash"`
-		TxPos int `json:"outputidx"`
+		TxID  string `json:"txhash"`
+		TxPos int    `json:"outputidx"`
 	}
 	cmd7 := rpcCommand(Activator, "servicenode outputs")
 	output, err := cmd7.Output()
@@ -321,22 +322,22 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	sn2 := localContainerForNode(Sn2)
 
 	// Servicenodes
-	ssn1 := SNode{ ID:Sn1, Alias:sn1.ShortName, IP:sn1.IP(), Key:keys[0], CollateralID:outputs[0].TxID, CollateralPos:strconv.Itoa(outputs[0].TxPos) }
-	ssn2 := SNode{ ID:Sn2, Alias:sn2.ShortName, IP:sn2.IP(), Key:keys[1], CollateralID:outputs[1].TxID, CollateralPos:strconv.Itoa(outputs[1].TxPos) }
-	snodes := []SNode{ ssn1, ssn2 }
+	ssn1 := SNode{ID: Sn1, Alias: sn1.ShortName, IP: sn1.IP(), Key: keys[0], CollateralID: outputs[0].TxID, CollateralPos: strconv.Itoa(outputs[0].TxPos)}
+	ssn2 := SNode{ID: Sn2, Alias: sn2.ShortName, IP: sn2.IP(), Key: keys[1], CollateralID: outputs[1].TxID, CollateralPos: strconv.Itoa(outputs[1].TxPos)}
+	snodes := []SNode{ssn1, ssn2}
 
 	activatorC := containers.FindContainer(docker, activator.Name)
 	sn1C := containers.FindContainer(docker, sn1.Name)
 	sn2C := containers.FindContainer(docker, sn2.Name)
 
 	// Max wait time for all commands below
-	ctx, cancel := context.WithTimeout(context.Background(), 60 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	// Generate activator servicenode.conf
 	snConf := servicenodeConf(snodes)
 	// Copy activator servicenode.conf
-	if servicenodeConf, err := util.CreateTar(map[string][]byte{ "servicenode.conf": []byte(snConf) }); err == nil {
+	if servicenodeConf, err := util.CreateTar(map[string][]byte{"servicenode.conf": []byte(snConf)}); err == nil {
 		if err := docker.CopyToContainer(ctx, activatorC.ID, "/opt/blockchain/dxregress/testnet4/", servicenodeConf, types.CopyToContainerOptions{}); err != nil {
 			return errors.Wrap(err, "Failed to write servicenode.conf to activator")
 		}
@@ -346,7 +347,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 
 	// Update activator blocknetdx.conf
 	blocknetConfActivator := blocknetdxConf(Activator, localContainers, "")
-	if bufActivator, err := util.CreateTar(map[string][]byte{ "blocknetdx.conf": []byte(blocknetConfActivator) }); err == nil {
+	if bufActivator, err := util.CreateTar(map[string][]byte{"blocknetdx.conf": []byte(blocknetConfActivator)}); err == nil {
 		if err := docker.CopyToContainer(ctx, activatorC.ID, "/opt/blockchain/config/", bufActivator, types.CopyToContainerOptions{}); err != nil {
 			return errors.Wrap(err, "Failed to write blocknetdx.conf to activator")
 		}
@@ -356,7 +357,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 
 	// Update sn1 blocknetdx.conf
 	blocknetConfSn1 := blocknetdxConf(Sn1, localContainers, ssn1.Key)
-	if bufSn1, err := util.CreateTar(map[string][]byte{ "blocknetdx.conf": []byte(blocknetConfSn1) }); err == nil {
+	if bufSn1, err := util.CreateTar(map[string][]byte{"blocknetdx.conf": []byte(blocknetConfSn1)}); err == nil {
 		if err := docker.CopyToContainer(ctx, sn1C.ID, "/opt/blockchain/config/", bufSn1, types.CopyToContainerOptions{}); err != nil {
 			return errors.Wrap(err, "Failed to write blocknetdx.conf to sn1")
 		}
@@ -366,7 +367,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 
 	// Update sn2 blocknetdx.conf
 	blocknetConfSn2 := blocknetdxConf(Sn2, localContainers, ssn2.Key)
-	if bufSn2, err := util.CreateTar(map[string][]byte{ "blocknetdx.conf": []byte(blocknetConfSn2) }); err == nil {
+	if bufSn2, err := util.CreateTar(map[string][]byte{"blocknetdx.conf": []byte(blocknetConfSn2)}); err == nil {
 		if err := docker.CopyToContainer(ctx, sn2C.ID, "/opt/blockchain/config/", bufSn2, types.CopyToContainerOptions{}); err != nil {
 			return errors.Wrap(err, "Failed to write blocknetdx.conf to sn2")
 		}
@@ -376,7 +377,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 
 	// Write sn1 & sn2 xbridge.conf
 	xbridgeConfSnode := xbridgeConf(p_wallets)
-	if bufSn, err := util.CreateTar(map[string][]byte{ "xbridge.conf": []byte(xbridgeConfSnode) }); err == nil {
+	if bufSn, err := util.CreateTar(map[string][]byte{"xbridge.conf": []byte(xbridgeConfSnode)}); err == nil {
 		if err := docker.CopyToContainer(ctx, sn1C.ID, "/opt/blockchain/dxregress/", bufSn, types.CopyToContainerOptions{}); err != nil {
 			return errors.Wrap(err, "Failed to write xbridge.conf to sn1")
 		}

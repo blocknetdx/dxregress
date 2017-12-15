@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"path"
 
+	"github.com/BlocknetDX/dxregress/chain"
 	"github.com/BlocknetDX/dxregress/util"
 	"github.com/docker/docker/client"
 	"github.com/sirupsen/logrus"
@@ -29,8 +30,8 @@ import (
 var localenvDownCmd = &cobra.Command{
 	Use:   "down",
 	Short: "Stops the local test environment",
-	Long: `The path to the codebase must be specified in the command.`,
-	Args: cobra.ExactArgs(1),
+	Long:  `The path to the codebase must be specified in the command.`,
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// Obtain the codebase directory
 		codedir := args[0]
@@ -41,7 +42,7 @@ var localenvDownCmd = &cobra.Command{
 		}
 
 		// Remove genesis patch to codebase
-		if err := util.GitRemovePatch(genesisPatch(), path.Join(getConfigPath(), genesisPatchFile), codedir); err != nil {
+		if err := util.GitRemovePatch(chain.GenesisPatchV1(), path.Join(getConfigPath(), genesisPatchFile), codedir); err != nil {
 			logrus.Error(err)
 		}
 
