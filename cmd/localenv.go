@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -56,6 +56,7 @@ type Node struct {
 	RPCPort      string
 	DebuggerPort string
 	Ports        nat.PortMap
+	CLI          string
 }
 
 func (node Node) IP() string {
@@ -72,10 +73,11 @@ type SNode struct {
 }
 
 var localContainers = []Node{
-	{Activator, "activator", dxregressContainerName("activator"), "41477", "41427", "41487", getPortMap("41477", "41427", "41487")},
-	{Sn1, "sn1", dxregressContainerName("sn1"), "41478", "41428", "41488", getPortMap("41478", "41428", "41488")},
-	{Sn2, "sn2", dxregressContainerName("sn2"), "41479", "41429", "41489", getPortMap("41479", "41429", "41489")},
+	{Activator, "activator", dxregressContainerName("activator"), "41477", "41427", "41487", getPortMap("41477", "41476", "41427", "41419", "41487", "41475"), "blocknetdx-cli"},
+	{Sn1, "sn1", dxregressContainerName("sn1"), "41478", "41428", "41488", getPortMap("41478", "41476", "41428", "41419", "41488", "41475"), "blocknetdx-cli"},
+	{Sn2, "sn2", dxregressContainerName("sn2"), "41479", "41429", "41489", getPortMap("41479", "41476", "41429", "41419", "41489", "41475"), "blocknetdx-cli"},
 }
+var xwalletContainers []Node
 
 // localenvCmd represents the localenv command
 var localenvCmd = &cobra.Command{
@@ -147,14 +149,9 @@ func stopAllLocalEnvContainers(ctx context.Context, docker *client.Client, suppr
 	return nil
 }
 
-// rpcParams returns the connection parameters.
-func rpcParams(node int) string {
-	return "-rpcuser=localenv -rpcpassword=test -rpcport=" + rpcPortForNode(node)
-}
-
-// rpcCommand returns a command compatible with the activator node.
-func rpcCommand(node int, cmd string) *exec.Cmd {
-	c := exec.Command("/bin/sh", "-c", fmt.Sprintf("%s %s %s", path.Join(codedir, "src/blocknetdx-cli"), rpcParams(node), cmd))
+// rpcCommand returns a command compatible with a running node.
+func rpcCommand(name, exe, cmd string) *exec.Cmd {
+	c := exec.Command("/bin/sh", "-c", fmt.Sprintf("docker exec %s %s %s", name, exe, cmd))
 	logrus.Debug(strings.Join(c.Args, " "))
 	if viper.GetBool("DEBUG") {
 		c.Stderr = os.Stderr
@@ -162,12 +159,17 @@ func rpcCommand(node int, cmd string) *exec.Cmd {
 	return c
 }
 
-// rpcCommands returns a command compatible with the activator node that includes multiple rpc commands.
-func rpcCommands(node int, cmds []string) *exec.Cmd {
+// rpcCommand returns a command compatible with a running node.
+func blockRPCCommand(name, cmd string) *exec.Cmd {
+	return rpcCommand(name, "blocknetdx-cli", cmd)
+}
+
+// rpcCommands returns a command compatible with a node that includes multiple rpc commands.
+func rpcCommands(name, exe string, cmds []string) *exec.Cmd {
 	var cmdS string
 	for i, c := range cmds {
 		// Build the command
-		cmdS += fmt.Sprintf("%s %s %s ", path.Join(codedir, "src/blocknetdx-cli"), rpcParams(node), c)
+		cmdS += fmt.Sprintf("docker exec %s %s %s ", name, exe, c)
 		if i < len(cmds)-1 {
 			cmdS += "&& "
 		}
@@ -179,14 +181,9 @@ func rpcCommands(node int, cmds []string) *exec.Cmd {
 	return cmd
 }
 
-// rpcPortForNode returns the rpc port for the specified node.
-func rpcPortForNode(nodeID int) string {
-	for _, node := range localContainers {
-		if node.ID == nodeID {
-			return node.RPCPort
-		}
-	}
-	return ""
+// blockRPCCommands returns a command compatible with the activator node that includes multiple rpc commands.
+func blockRPCCommands(name string, cmds []string) *exec.Cmd {
+	return rpcCommands(name, "blocknetdx-cli", cmds)
 }
 
 // localContainerForNode returns the node data with the specified id.
@@ -331,6 +328,7 @@ rpcclienttimeout=15
 	if snodeKey != "" {
 		base += `
 staking=0
+enableexchange=1
 servicenode=1
 servicenodeaddr=` + fmt.Sprintf("%s:%s", localIP, cnode.Port) + `
 servicenodeprivkey=` + snodeKey + `
@@ -343,13 +341,21 @@ servicenodeprivkey=` + snodeKey + `
 }
 
 // xbridgeConf returns the xbridge configuration with the specified wallets.
-func xbridgeConf(wallets []string) string {
-	ip := util.GetLocalIP()
-	conf := chain.MAIN(wallets)
+func xbridgeConf(wallets []chain.XWallet) string {
+	conf := chain.MAIN(xbridgeWalletList(wallets))
 	for _, wallet := range wallets {
-		conf += chain.DefaultXConfig(wallet, "", ip, "localenv", "test") + "\n"
+		conf += chain.DefaultXConfig(wallet.Name, wallet.Version, wallet.Address, wallet.IP, wallet.RPCUser, wallet.RPCPass) + "\n\n"
 	}
 	return conf
+}
+
+// xbridgeWalletList returns wallet name list.
+func xbridgeWalletList(wallets []chain.XWallet) []string {
+	var ws []string
+	for _, wallet := range wallets {
+		ws = append(ws, wallet.Name)
+	}
+	return ws
 }
 
 // dxregressContainerName returns a valid dxregress container name.
@@ -360,4 +366,28 @@ func dxregressContainerName(name string) string {
 // testBlocknetConf
 func testBlocknetConf() string {
 	return blocknetdxConf(-1, localContainers, "")
+}
+
+// walletNode returns the wallet node.
+func walletNode(xwallet chain.XWallet) Node {
+	// TODO Add wallet debug port
+	// Determine the debugger port (using port immediately after RPC port)
+	var debugPort string
+	//if port, err := strconv.Atoi(xwallet.RPCPort); err == nil {
+	//	port++
+	//	debugPort = strconv.Itoa(port)
+	//}
+
+	// Use the port as unique id
+	nodeID, _ := strconv.Atoi(xwallet.Port)
+	return Node{
+		nodeID,
+		xwallet.Name,
+		dxregressContainerName(xwallet.Name),
+		xwallet.Port,
+		xwallet.RPCPort,
+		debugPort,
+		getPortMap(xwallet.Port, xwallet.Port, xwallet.RPCPort, xwallet.RPCPort, debugPort, debugPort),
+		xwallet.CLI,
+	}
 }

@@ -143,7 +143,7 @@ func CreateAndStart(ctx context.Context, docker *client.Client, image, name stri
 	ncfg := network.NetworkingConfig{}
 	result, err := docker.ContainerCreate(ctx, &cfg, &hcfg, &ncfg, name)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "Failed to create %s container [%s]", name, image)
 	}
 	return docker.ContainerStart(ctx, result.ID, types.ContainerStartOptions{})
 }

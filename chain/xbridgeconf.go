@@ -1,45 +1,65 @@
 package chain
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 const (
-	WalletBTC 	= "BTC"
-	WalletLTC	= "LTC"
-	WalletSYS 	= "SYS"
-	WalletDASH 	= "DASH"
-	WalletDGB	= "DGB"
-	WalletDYN	= "DYN"
-	WalletDOGE	= "DOGE"
-	WalletPIVX	= "PIVX"
-	WalletVIA	= "VIA"
-	WalletVTC	= "VTC"
-	WalletMUE	= "MUE"
-	WalletNMC	= "NMC"
-	WalletQTUM	= "QTUM"
-	WalletLBC	= "LBC"
-	WalletMONA 	= "MONA"
-	WalletBLOCK	= "BLOCK"
-	WalletFAIR	= "FAIR"
+	WalletBTC   = "BTC"
+	WalletLTC   = "LTC"
+	WalletSYS   = "SYS"
+	WalletDASH  = "DASH"
+	WalletDGB   = "DGB"
+	WalletDYN   = "DYN"
+	WalletDOGE  = "DOGE"
+	WalletPIVX  = "PIVX"
+	WalletVIA   = "VIA"
+	WalletVTC   = "VTC"
+	WalletMUE   = "MUE"
+	WalletNMC   = "NMC"
+	WalletQTUM  = "QTUM"
+	WalletLBC   = "LBC"
+	WalletMONA  = "MONA"
+	WalletBLOCK = "BLOCK"
+	WalletFAIR  = "FAIR"
 )
 
 var Wallets = map[string]string{
-	WalletBTC: WalletBTC,
-	WalletLTC: WalletLTC,
-	WalletSYS: WalletSYS,
-	WalletDASH: WalletDASH,
-	WalletDGB: WalletDGB,
-	WalletDYN: WalletDYN,
-	WalletDOGE: WalletDOGE,
-	WalletPIVX: WalletPIVX,
-	WalletMONA: WalletMONA,
-	WalletVIA: WalletVIA,
-	WalletVTC: WalletVTC,
-	WalletMUE: WalletMUE,
-	WalletNMC: WalletNMC,
-	WalletQTUM: WalletQTUM,
-	WalletLBC: WalletLBC,
+	WalletBTC:   WalletBTC,
+	WalletLTC:   WalletLTC,
+	WalletSYS:   WalletSYS,
+	WalletDASH:  WalletDASH,
+	WalletDGB:   WalletDGB,
+	WalletDYN:   WalletDYN,
+	WalletDOGE:  WalletDOGE,
+	WalletPIVX:  WalletPIVX,
+	WalletMONA:  WalletMONA,
+	WalletVIA:   WalletVIA,
+	WalletVTC:   WalletVTC,
+	WalletMUE:   WalletMUE,
+	WalletNMC:   WalletNMC,
+	WalletQTUM:  WalletQTUM,
+	WalletLBC:   WalletLBC,
 	WalletBLOCK: WalletBLOCK,
-	WalletFAIR: WalletFAIR,
+	WalletFAIR:  WalletFAIR,
+}
+
+type XWallet struct {
+	Name      string
+	Address   string
+	IP        string
+	Port      string
+	RPCPort   string
+	RPCUser   string
+	RPCPass   string
+	Container string
+	Version   string
+	CLI       string
+}
+
+func (w XWallet) IsNull() bool {
+	return w.Name == ""
 }
 
 // SupportsWallet returns true if the wallet is supported.
@@ -48,51 +68,104 @@ func SupportsWallet(wallet string) bool {
 	return ok
 }
 
-// DefaultXConfig returns the default xbridge config for the specified coin.
-func DefaultXConfig(coin, address, ip, rpcuser, rpcpass string) string {
+// CreateXWallet returns the default wallet data.
+func CreateXWallet(coin, version, address, ip, rpcuser, rpcpass string) XWallet {
+	// TODO Update ports
+	getCoinVersion := func(repo, ver, defaultVersion string) string {
+		if ver == "" {
+			ver = defaultVersion
+			if ver == "" {
+				ver = "latest"
+			}
+		}
+		return fmt.Sprintf("%s:%s", repo, ver)
+	}
 	switch coin {
 	case WalletBTC:
-		return BTC(address, ip, "8332", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "8333", "8332", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletLTC:
-		return LTC(address, ip, "9332", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "9333", "9332", rpcuser, rpcpass, getCoinVersion("blocknetdx/litecoin", version, ""), version, "litecoin-cli"}
 	case WalletSYS:
-		return SYS(address, ip, "8370", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "8369", "8370", rpcuser, rpcpass, getCoinVersion("blocknetdx/syscoin2", version, "2.1.6-snap500644"), version, "syscoin-cli"}
 	case WalletDASH:
-		return DASH(address, ip, "9998", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "9998", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletDGB:
-		return DGB(address, ip, "14022", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "14022", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletDYN:
-		return DYN(address, ip, "31350", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "31350", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletDOGE:
-		return DOGE(address, ip, "22555", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "22555", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletPIVX:
-		return PIVX(address, ip, "51473", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "51473", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletVIA:
-		return VIA(address, ip, "5222", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "5222", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletVTC:
-		return VTC(address, ip, "5888", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "5888", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletMUE:
-		return MUE(address, ip, "29683", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "29683", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletNMC:
-		return NMC(address, ip, "8336", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "8336", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletQTUM:
-		return QTUM(address, ip, "3889", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "3889", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletLBC:
-		return LBC(address, ip, "9245", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "9245", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	case WalletMONA:
-		return MONA(address, ip, "9402", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "9401", "9402", rpcuser, rpcpass, getCoinVersion("blocknetdx/monacoin", version, "0.14.2-snap1193272"), version, "monacoin-cli"}
 	case WalletBLOCK:
-		return BLOCK(address, ip, "41414", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "41412", "41414", rpcuser, rpcpass, getCoinVersion("blocknetdx/servicenode", version, ""), version, "blocknetdx-cli"}
 	case WalletFAIR:
-		return FAIR(address, ip, "40405", rpcuser, rpcpass)
+		return XWallet{coin, address, ip, "", "40405", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified"}
 	}
+	return XWallet{}
+}
+
+// DefaultXConfig returns the default xbridge config for the specified coin.
+func DefaultXConfig(coin, version, address, ip, rpcuser, rpcpass string) string {
+	wallet := CreateXWallet(coin, version, address, ip, rpcuser, rpcpass)
+	switch coin {
+	case WalletBTC:
+		return BTC(wallet)
+	case WalletLTC:
+		return LTC(wallet)
+	case WalletSYS:
+		return SYS(wallet)
+	case WalletDASH:
+		return DASH(wallet)
+	case WalletDGB:
+		return DGB(wallet)
+	case WalletDYN:
+		return DYN(wallet)
+	case WalletDOGE:
+		return DOGE(wallet)
+	case WalletPIVX:
+		return PIVX(wallet)
+	case WalletVIA:
+		return VIA(wallet)
+	case WalletVTC:
+		return VTC(wallet)
+	case WalletMUE:
+		return MUE(wallet)
+	case WalletNMC:
+		return NMC(wallet)
+	case WalletQTUM:
+		return QTUM(wallet)
+	case WalletLBC:
+		return LBC(wallet)
+	case WalletMONA:
+		return MONA(wallet)
+	case WalletBLOCK:
+		return BLOCK(wallet)
+	case WalletFAIR:
+		return FAIR(wallet)
+	}
+
 	return ""
 }
 
 // MAIN returns the main config section.
 func MAIN(wallets []string) string {
 	return `[Main]
-ExchangeWallets=`+strings.Join(wallets, ",")+`
+ExchangeWallets=` + strings.Join(wallets, ",") + `
 FullLog=true
 LogPath=/var/log/xbridge.log
 ExchangeTax=300
@@ -108,14 +181,14 @@ Port=9898
 }
 
 // BTC bitcoin
-func BTC(address, ip, port, rpcuser, rpcpass string) string {
+func BTC(wallet XWallet) string {
 	return `[BTC]
 Title=Bitcoin
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 8332
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.Port + ` # 8332
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=0
 ScriptPrefix=5
 SecretPrefix=128
@@ -134,16 +207,16 @@ Confirmations=0
 }
 
 // LTC litecoin
-func LTC(address, ip, port, rpcuser, rpcpass string) string {
+func LTC(wallet XWallet) string {
 	return `[LTC]
 Title=Litecoin
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 9332
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 9332
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=48
-ScriptPrefix=5
+Scrwallet.IPtPrefix=5
 SecretPrefix=176
 COIN=100000000
 MinimumAmount=0
@@ -160,16 +233,16 @@ Confirmations=0
 }
 
 // SYS syscoin2
-func SYS(address, ip, port, rpcuser, rpcpass string) string {
+func SYS(wallet XWallet) string {
 	return `[SYS]
 Title=SysCoin2
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 8370
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 8370
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=0
-ScriptPrefix=5
+Scrwallet.IPtPrefix=5
 SecretPrefix=128
 COIN=100000000
 MinimumAmount=0
@@ -186,16 +259,16 @@ Confirmations=0
 }
 
 // DASH dash
-func DASH(address, ip, port, rpcuser, rpcpass string) string {
+func DASH(wallet XWallet) string {
 	return `[DASH]
 Title=Dash
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 9998
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 9998
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=76
-ScriptPrefix=16
+Scrwallet.IPtPrefix=16
 SecretPrefix=204
 COIN=100000000
 MinimumAmount=0
@@ -212,16 +285,16 @@ Confirmations=0
 }
 
 // DGB digibyte
-func DGB(address, ip, port, rpcuser, rpcpass string) string {
+func DGB(wallet XWallet) string {
 	return `[DGB]
 Title=Digibyte
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 14022
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 14022
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=30
-ScriptPrefix=5
+Scrwallet.IPtPrefix=5
 SecretPrefix=128
 COIN=100000000
 MinimumAmount=0
@@ -238,16 +311,16 @@ Confirmations=0
 }
 
 // DYN dynamic
-func DYN(address, ip, port, rpcuser, rpcpass string) string {
+func DYN(wallet XWallet) string {
 	return `[DYN]
 Title=Dynamic
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 31350
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 31350
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=30
-ScriptPrefix=10
+Scrwallet.IPtPrefix=10
 SecretPrefix=140
 COIN=100000000
 MinimumAmount=0
@@ -264,16 +337,16 @@ Confirmations=0
 }
 
 // DOGE dogecoin
-func DOGE(address, ip, port, rpcuser, rpcpass string) string {
+func DOGE(wallet XWallet) string {
 	return `[DOGE]
 Title=Dogecoin
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 22555
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 22555
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=30
-ScriptPrefix=22
+Scrwallet.IPtPrefix=22
 SecretPrefix=158
 COIN=100000000
 MinimumAmount=0
@@ -290,16 +363,16 @@ Confirmations=0
 }
 
 // PIVX dogecoin
-func PIVX(address, ip, port, rpcuser, rpcpass string) string {
+func PIVX(wallet XWallet) string {
 	return `[PIVX]
 Title=Pivx
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 51473
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 51473
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=30
-ScriptPrefix=13
+Scrwallet.IPtPrefix=13
 SecretPrefix=212
 COIN=100000000
 MinimumAmount=0
@@ -316,16 +389,16 @@ Confirmations=0
 }
 
 // VIA viacoin
-func VIA(address, ip, port, rpcuser, rpcpass string) string {
+func VIA(wallet XWallet) string {
 	return `[VIA]
 Title=Viacoin
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 5222
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 5222
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=71
-ScriptPrefix=33
+Scrwallet.IPtPrefix=33
 SecretPrefix=199
 COIN=100000000
 MinimumAmount=0
@@ -342,16 +415,16 @@ Confirmations=0
 }
 
 // VTC vertcoin
-func VTC(address, ip, port, rpcuser, rpcpass string) string {
+func VTC(wallet XWallet) string {
 	return `[VTC]
 Title=Vertcoin
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 5888
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 5888
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=71
-ScriptPrefix=5
+Scrwallet.IPtPrefix=5
 SecretPrefix=199
 COIN=100000000
 MinimumAmount=0
@@ -368,16 +441,16 @@ Confirmations=0
 }
 
 // MUE monetaryunit
-func MUE(address, ip, port, rpcuser, rpcpass string) string {
+func MUE(wallet XWallet) string {
 	return `[MUE]
 Title=MonetaryUnit
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 29683
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 29683
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=16
-ScriptPrefix=76
+Scrwallet.IPtPrefix=76
 SecretPrefix=126
 COIN=100000000
 MinimumAmount=0
@@ -394,16 +467,16 @@ Confirmations=0
 }
 
 // NMC namecoin
-func NMC(address, ip, port, rpcuser, rpcpass string) string {
+func NMC(wallet XWallet) string {
 	return `[NMC]
 Title=Namecoin
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 8336
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 8336
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=52
-ScriptPrefix=13
+Scrwallet.IPtPrefix=13
 SecretPrefix=180
 COIN=100000000
 MinimumAmount=0
@@ -420,16 +493,16 @@ Confirmations=0
 }
 
 // QTUM qtum
-func QTUM(address, ip, port, rpcuser, rpcpass string) string {
+func QTUM(wallet XWallet) string {
 	return `[QTUM]
 Title=Qtum
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 3889 testnet port
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 3889 testnet port
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=58
-ScriptPrefix=50
+Scrwallet.IPtPrefix=50
 SecretPrefix=128
 COIN=100000000
 MinimumAmount=0
@@ -446,16 +519,16 @@ Confirmations=0
 }
 
 // LBC lbry credits
-func LBC(address, ip, port, rpcuser, rpcpass string) string {
+func LBC(wallet XWallet) string {
 	return `[LBC]
 Title=LBRY Credits
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 9245
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 9245
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=85
-ScriptPrefix=122
+Scrwallet.IPtPrefix=122
 SecretPrefix=28
 COIN=100000000
 MinimumAmount=0
@@ -472,16 +545,16 @@ Confirmations=0
 }
 
 // MONA monacoin
-func MONA(address, ip, port, rpcuser, rpcpass string) string {
+func MONA(wallet XWallet) string {
 	return `[MONA]
 Title=Monacoin
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 9402
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 9402
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=50
-ScriptPrefix=55
+Scrwallet.IPtPrefix=55
 SecretPrefix=176
 COIN=100000000
 MinimumAmount=0
@@ -498,16 +571,16 @@ Confirmations=0
 }
 
 // BLOCK blocknet
-func BLOCK(address, ip, port, rpcuser, rpcpass string) string {
+func BLOCK(wallet XWallet) string {
 	return `[BLOCK]
 Title=Blocknet
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 41414
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 41414
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=26
-ScriptPrefix=28
+Scrwallet.IPtPrefix=28
 SecretPrefix=154
 COIN=100000000
 MinimumAmount=0
@@ -524,16 +597,16 @@ Confirmations=0
 }
 
 // FAIR faircoin
-func FAIR(address, ip, port, rpcuser, rpcpass string) string {
+func FAIR(wallet XWallet) string {
 	return `[FAIR]
 Title=Faircoin
-Address=`+address+`
-Ip=`+ip+` # 127.0.0.1
-Port=`+port+` # 40405
-Username=`+rpcuser+`
-Password=`+rpcpass+`
+Address=` + wallet.Address + `
+Ip=` + wallet.IP + ` # 127.0.0.1
+Port=` + wallet.RPCPort + ` # 40405
+Username=` + wallet.RPCUser + `
+Password=` + wallet.RPCPass + `
 AddressPrefix=95
-ScriptPrefix=36
+Scrwallet.IPtPrefix=36
 SecretPrefix=223
 COIN=100000000
 MinimumAmount=0

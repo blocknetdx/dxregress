@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -33,11 +34,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 const cliPath = "src/blocknetdx-cli"
 
 var p_wallets []string
+
+var localWallets []chain.XWallet
 
 // localenvUpCmd represents the up command
 var localenvUpCmd = &cobra.Command{
@@ -56,14 +60,16 @@ var localenvUpCmd = &cobra.Command{
 
 		// Check that wallets are valid
 		if len(p_wallets) == 0 {
-			logrus.Warn("No wallets specified. Use the --wallets flag: -w=SYS,MONA")
+			logrus.Warn("No wallets specified. Use the --wallet flag: -w=SYS,version(optional),address,rpcuser,rpcpassword")
 		}
-		for _, wallet := range p_wallets {
-			if !chain.SupportsWallet(wallet) {
-				logrus.Errorf("Unsupported wallet %s", wallet)
+		for _, cmdWallet := range p_wallets {
+			wallet, err := xwalletForCmdParameter(cmdWallet)
+			if err != nil || !chain.SupportsWallet(wallet.Name) {
+				logrus.Errorf("Unsupported wallet %s", wallet.Name)
 				stop()
 				return
 			}
+			localWallets = append(localWallets, wallet)
 		}
 
 		// Check if cli exists
@@ -137,7 +143,26 @@ var localenvUpCmd = &cobra.Command{
 					waitChan <- err
 					return
 				}
-				logrus.Infof("%s node running on %s, rpc on %s, gdb/lldb port on %s", c.Name, c.Port, c.RPCPort, c.DebuggerPort)
+				if c.DebuggerPort != "" {
+					logrus.Infof("%s node running on %s, rpc on %s, gdb/lldb port on %s", c.Name, c.Port, c.RPCPort, c.DebuggerPort)
+				} else {
+					logrus.Infof("%s node running on %s, rpc on %s", c.Name, c.Port, c.RPCPort)
+				}
+			}
+
+			// Start wallet containers
+			for _, w := range localWallets {
+				wc := walletNode(w)
+				xwalletContainers = append(xwalletContainers, wc)
+				if err := containers.CreateAndStart(ctx, docker, w.Container, wc.Name, wc.Ports); err != nil {
+					waitChan <- err
+					return
+				}
+				if wc.DebuggerPort != "" {
+					logrus.Infof("%s node running on %s, rpc on %s, gdb/lldb port on %s", wc.Name, wc.Port, wc.RPCPort, wc.DebuggerPort)
+				} else {
+					logrus.Infof("%s node running on %s, rpc on %s", wc.Name, wc.Port, wc.RPCPort)
+				}
 			}
 
 			logrus.Info("Waiting for localenv to be ready...")
@@ -172,12 +197,13 @@ var localenvUpCmd = &cobra.Command{
 			}
 		}
 
-		for _, node := range localContainers {
-			logrus.Infof("Sample rpc call %s: blocknetdx-cli -rpcuser=localenv -rpcpassword=test -rpcport=%s getinfo", node.ShortName, node.RPCPort)
+		allContainers := append(localContainers, xwalletContainers...)
+		for _, node := range allContainers {
+			logrus.Infof("Sample rpc call %s: docker exec %s %s getinfo", node.ShortName, node.Name, node.CLI)
 		}
 		logrus.Infof("Test blocknetdx.conf file here: %s", testBlocknetConfFile())
-		if len(p_wallets) > 0 {
-			logrus.Infof("Wallets enabled: %s", strings.Join(p_wallets, ","))
+		if len(localWallets) > 0 {
+			logrus.Infof("Wallets enabled: %s", strings.Join(xbridgeWalletList(localWallets), ","))
 		}
 		logrus.Info("Successfully started localenv")
 	},
@@ -185,7 +211,7 @@ var localenvUpCmd = &cobra.Command{
 
 func init() {
 	localenvCmd.AddCommand(localenvUpCmd)
-	localenvUpCmd.Flags().StringSliceVarP(&p_wallets, "wallets", "w", []string{}, "Test wallets")
+	localenvUpCmd.Flags().StringArrayVarP(&p_wallets, "wallet", "w", []string{}, "Test wallets")
 }
 
 // waitForLoadenv will block for a maximum of 30 seconds until the local environment is ready. The
@@ -207,8 +233,11 @@ func waitForLoadenv(parentContext context.Context, nodes []Node) error {
 			default:
 				ready := true
 				for _, node := range nodes {
-					cmd := rpcCommand(node.ID, "getinfo")
+					cmd := rpcCommand(node.Name, node.CLI, "getinfo")
 					if err := cmd.Run(); err != nil {
+						if viper.GetBool("DEBUG") {
+							logrus.Debug(err)
+						}
 						ready = false
 					}
 				}
@@ -242,8 +271,17 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	// sn1 alias address: y3DT9bZ69AjvdQFzYTCSpFgT9wJcRpHi7T key: cRdLcWroNyJPJ1BH4Q24pamDQtE3JNdm7tGQoD6mm9brqpYuX1dC
 	// sn2 alias address: yF2E6wPBc1YosrGUMhgoet5zPat1A4Z87d key: cMn9aiQGBYqeRzRuTFAModv459UQNxGsXkgPSRQ1W7XwGdGCp1JB
 
+	// Nodes
+	activator := localContainerForNode(Activator)
+	sn1 := localContainerForNode(Sn1)
+	sn2 := localContainerForNode(Sn2)
+
+	activatorC := containers.FindContainer(docker, activator.Name)
+	sn1C := containers.FindContainer(docker, sn1.Name)
+	sn2C := containers.FindContainer(docker, sn2.Name)
+
 	// First import test address into alias and then generate test coin
-	cmd := rpcCommands(Activator, []string{"importprivkey cQiWHyehhhsRFYadBpj5wQRU9HU23GtHSjyPY2hBLccHWeNq6iTY coin", "setgenerate true 25"})
+	cmd := blockRPCCommands(activator.Name, []string{"importprivkey cQiWHyehhhsRFYadBpj5wQRU9HU23GtHSjyPY2hBLccHWeNq6iTY coin", "setgenerate true 25"})
 	if output, err := cmd.Output(); err != nil {
 		return errors.Wrap(err, "Failed to generate first 25 blocks")
 	} else {
@@ -251,7 +289,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	}
 
 	// Import alias addresses
-	cmd2 := rpcCommands(Activator, []string{"importprivkey cRdLcWroNyJPJ1BH4Q24pamDQtE3JNdm7tGQoD6mm9brqpYuX1dC sn1", "importprivkey cMn9aiQGBYqeRzRuTFAModv459UQNxGsXkgPSRQ1W7XwGdGCp1JB sn2"})
+	cmd2 := blockRPCCommands(activator.Name, []string{"importprivkey cRdLcWroNyJPJ1BH4Q24pamDQtE3JNdm7tGQoD6mm9brqpYuX1dC sn1", "importprivkey cMn9aiQGBYqeRzRuTFAModv459UQNxGsXkgPSRQ1W7XwGdGCp1JB sn2"})
 	if output, err := cmd2.Output(); err != nil {
 		return errors.Wrap(err, "Failed to import alias addresses")
 	} else {
@@ -259,7 +297,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	}
 
 	// Send 5k servicenode coin to each alias
-	cmd3 := rpcCommands(Activator, []string{"sendtoaddress y3DT9bZ69AjvdQFzYTCSpFgT9wJcRpHi7T 5000", "sendtoaddress yF2E6wPBc1YosrGUMhgoet5zPat1A4Z87d 5000"})
+	cmd3 := blockRPCCommands(activator.Name, []string{"sendtoaddress y3DT9bZ69AjvdQFzYTCSpFgT9wJcRpHi7T 5000", "sendtoaddress yF2E6wPBc1YosrGUMhgoet5zPat1A4Z87d 5000"})
 	if output, err := cmd3.Output(); err != nil {
 		return errors.Wrap(err, "Failed to send 5k servicenode coin")
 	} else {
@@ -271,7 +309,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	for i := 0; i < len(cmd4S); i++ {
 		cmd4S[i] = "sendtoaddress y5zBd8oLQSnTjChTUCfRieTAp5Z31bRwEV 2500"
 	}
-	cmd4 := rpcCommands(Activator, cmd4S)
+	cmd4 := blockRPCCommands(activator.Name, cmd4S)
 	if output, err := cmd4.Output(); err != nil {
 		return errors.Wrap(err, "Failed to split coin")
 	} else {
@@ -279,7 +317,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	}
 
 	// Generate last 25 PoW blocks
-	cmd5 := rpcCommand(Activator, "setgenerate true 25")
+	cmd5 := blockRPCCommand(activator.Name, "setgenerate true 25")
 	if output, err := cmd5.Output(); err != nil {
 		return errors.Wrap(err, "Failed to generate blocks 25-50")
 	} else {
@@ -288,13 +326,13 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 
 	// Obtain servicenode keys
 	var keys []string
-	cmd6A := rpcCommand(Sn1, "servicenode genkey")
+	cmd6A := blockRPCCommand(sn1.Name, "servicenode genkey")
 	if output, err := cmd6A.Output(); err != nil {
 		return errors.Wrap(err, "Failed to call genkey on sn1")
 	} else {
 		keys = append(keys, strings.TrimSpace(string(output)))
 	}
-	cmd6B := rpcCommand(Sn2, "servicenode genkey")
+	cmd6B := blockRPCCommand(sn2.Name, "servicenode genkey")
 	if output, err := cmd6B.Output(); err != nil {
 		return errors.Wrap(err, "Failed to call genkey on sn2")
 	} else {
@@ -306,7 +344,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 		TxID  string `json:"txhash"`
 		TxPos int    `json:"outputidx"`
 	}
-	cmd7 := rpcCommand(Activator, "servicenode outputs")
+	cmd7 := blockRPCCommand(activator.Name, "servicenode outputs")
 	output, err := cmd7.Output()
 	if err != nil {
 		return errors.Wrap(err, "Failed to parse servicenode outputs")
@@ -316,19 +354,10 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 		return errors.Wrap(err, "Failed to parse servicenode outputs")
 	}
 
-	// Nodes
-	activator := localContainerForNode(Activator)
-	sn1 := localContainerForNode(Sn1)
-	sn2 := localContainerForNode(Sn2)
-
 	// Servicenodes
 	ssn1 := SNode{ID: Sn1, Alias: sn1.ShortName, IP: sn1.IP(), Key: keys[0], CollateralID: outputs[0].TxID, CollateralPos: strconv.Itoa(outputs[0].TxPos)}
 	ssn2 := SNode{ID: Sn2, Alias: sn2.ShortName, IP: sn2.IP(), Key: keys[1], CollateralID: outputs[1].TxID, CollateralPos: strconv.Itoa(outputs[1].TxPos)}
 	snodes := []SNode{ssn1, ssn2}
-
-	activatorC := containers.FindContainer(docker, activator.Name)
-	sn1C := containers.FindContainer(docker, sn1.Name)
-	sn2C := containers.FindContainer(docker, sn2.Name)
 
 	// Max wait time for all commands below
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -376,7 +405,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	}
 
 	// Write sn1 & sn2 xbridge.conf
-	xbridgeConfSnode := xbridgeConf(p_wallets)
+	xbridgeConfSnode := xbridgeConf(localWallets)
 	if bufSn, err := util.CreateTar(map[string][]byte{"xbridge.conf": []byte(xbridgeConfSnode)}); err == nil {
 		if err := docker.CopyToContainer(ctx, sn1C.ID, "/opt/blockchain/dxregress/", bufSn, types.CopyToContainerOptions{}); err != nil {
 			return errors.Wrap(err, "Failed to write xbridge.conf to sn1")
@@ -393,18 +422,23 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 		return err
 	}
 
-	// Restart all nodes
-	if err := containers.RestartContainers(ctx, docker, localEnvContainerFilter("")); err != nil {
+	// Restart all nodes except for wallet nodes
+	if err := containers.RestartContainers(ctx, docker, localEnvContainerFilter("sn")); err != nil {
+		return err
+	}
+	if err := containers.RestartContainers(ctx, docker, localEnvContainerFilter("act")); err != nil {
 		return err
 	}
 
 	// Wait for service nodes to be ready
-	if err := waitForLoadenv(ctx, localContainers); err != nil {
+	logrus.Info("Waiting for nodes to be ready...")
+	allContainers := append(localContainers, xwalletContainers...)
+	if err := waitForLoadenv(ctx, allContainers); err != nil {
 		return err
 	}
 
 	// Start servicenodes
-	if err := startAllServicenodes(); err != nil {
+	if err := startAllServicenodes(activator.Name); err != nil {
 		return err
 	}
 
@@ -417,6 +451,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	}
 
 	// Wait for activator to be ready
+	logrus.Info("Waiting for activator to be ready...")
 	if err := waitForLoadenv(ctx, []Node{activator}); err != nil {
 		return err
 	}
@@ -424,7 +459,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 	// Call start servicenodes a second time to make sure they're started
 	// Wait before re-running snode command
 	time.Sleep(5 * time.Second)
-	if err := startAllServicenodes(); err != nil {
+	if err := startAllServicenodes(activator.Name); err != nil {
 		return err
 	}
 
@@ -434,24 +469,26 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 }
 
 // getPortMap returns the port map configuration for the specified port.
-func getPortMap(port, rpc, debug string) nat.PortMap {
-	return nat.PortMap{
-		nat.Port("41475/tcp"): []nat.PortBinding{
-			{HostIP: "0.0.0.0", HostPort: debug},
-		},
-		nat.Port("41476/tcp"): []nat.PortBinding{
-			{HostIP: "0.0.0.0", HostPort: port},
-		},
-		nat.Port("41419/tcp"): []nat.PortBinding{
-			{HostIP: "0.0.0.0", HostPort: rpc},
-		},
+func getPortMap(portExt, port, rpcExt, rpc, debugExt, debug string) nat.PortMap {
+	ports := make(nat.PortMap)
+	ports[nat.Port(port + "/tcp")] = []nat.PortBinding{
+		{HostIP: "0.0.0.0", HostPort: portExt},
 	}
+	ports[nat.Port(rpc + "/tcp")] = []nat.PortBinding{
+		{HostIP: "0.0.0.0", HostPort: rpcExt},
+	}
+	if debug != "" {
+		ports[nat.Port(debug + "/tcp")] = []nat.PortBinding{
+			{HostIP: "0.0.0.0", HostPort: debugExt},
+		}
+	}
+	return ports
 }
 
 // startServicenodes calls the servicenode start-all command on the activator.
-func startAllServicenodes() error {
+func startAllServicenodes(name string) error {
 	// Run servicenode start-all on activator
-	cmdStartAll := rpcCommand(Activator, "servicenode start-all")
+	cmdStartAll := blockRPCCommand(name, "servicenode start-all")
 	if output, err := cmdStartAll.Output(); err != nil {
 		return errors.Wrap(err, "Failed to run start-all on activator")
 	} else {
@@ -463,4 +500,25 @@ func startAllServicenodes() error {
 // testBlocknetConfFile returns the path to the test blocknetdx.conf.
 func testBlocknetConfFile() string {
 	return path.Join(getConfigPath(), "localenv/blocknetdx.conf")
+}
+
+// xwalletForCmdParameter returns an XWallet struct from wallet command line parameter.
+func xwalletForCmdParameter(cmdWallet string) (chain.XWallet, error) {
+	ip := util.GetLocalIP()
+	// Remove all spaces from input
+	cmdArgs := strings.Split(strings.Replace(cmdWallet, " ", "", -1), ",")
+	if len(cmdArgs) < 4 {
+		return chain.XWallet{}, errors.New("Incorrect wallet format, the correct format is: TICKER,version(optional),address,rpcuser,rpcpassword")
+	}
+	i := 0
+	name := cmdArgs[i]; i++
+	version := ""
+	// Assign version if match
+	if ok, _ := regexp.MatchString(`\d+\.\d+\.\d+\.`, cmdArgs[i]); ok {
+		version = cmdArgs[i]; i++
+	}
+	address := cmdArgs[i]; i++
+	rpcuser := cmdArgs[i]; i++
+	rpcpass := cmdArgs[i]
+	return chain.CreateXWallet(name, version, address, ip, rpcuser, rpcpass), nil
 }
