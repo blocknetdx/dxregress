@@ -5,9 +5,29 @@ Regression tester for BlocknetDX.
 The tool uses a `.dxregress.yml` config at `$HOME/.dxregress.yml`.
 Use `--config=` to load configurations of various setups.
 
-# Setup
+## Installation
 
+1) Install Prerequisites:
 * Docker CE is required: https://www.docker.com/community-edition#/download
+* Go v1.8+ (https://golang.org/dl/)
+
+2) Install dxregress via go get:
+```
+go get -u github.com/BlocknetDX/dxregress
+```
+
+3) Add go/bin to $PATH (linux):
+```
+touch ~/.profile
+echo "export GOPATH=/path/to/go" >> ~/.profile
+echo "PATH=$GOPATH/bin:$PATH" >> ~/.profile
+```
+
+4) Run docker without sudo requires adding `$USER` to docker group (may need to logout):
+```
+sudo groupadd docker
+sudo gpasswd -a $USER docker
+```
 
 ## dxregress localenv up /path/to/src
 
