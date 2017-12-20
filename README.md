@@ -5,7 +5,7 @@ Regression tester for BlocknetDX.
 The tool uses a `.dxregress.yml` config at `$HOME/.dxregress.yml`.
 Use `--config=` to load configurations of various setups.
 
-## Installation
+# Installation
 
 1) Install Prerequisites:
 * Docker CE is required: https://www.docker.com/community-edition#/download
@@ -28,6 +28,8 @@ echo "PATH=$GOPATH/bin:$PATH" >> ~/.profile
 sudo groupadd docker
 sudo gpasswd -a $USER docker
 ```
+
+# Commands 
 
 ## dxregress localenv up /path/to/src
 
