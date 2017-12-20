@@ -151,7 +151,7 @@ func stopAllLocalEnvContainers(ctx context.Context, docker *client.Client, suppr
 
 // rpcCommand returns a command compatible with a running node.
 func rpcCommand(name, exe, cmd string) *exec.Cmd {
-	c := exec.Command("/bin/sh", "-c", fmt.Sprintf("docker exec %s %s %s", name, exe, cmd))
+	c := exec.Command("/bin/bash", "-c", fmt.Sprintf("docker exec %s %s %s", name, exe, cmd))
 	logrus.Debug(strings.Join(c.Args, " "))
 	if viper.GetBool("DEBUG") {
 		c.Stderr = os.Stderr
@@ -174,7 +174,7 @@ func rpcCommands(name, exe string, cmds []string) *exec.Cmd {
 			cmdS += "&& "
 		}
 	}
-	cmd := exec.Command("/bin/sh", "-c", cmdS)
+	cmd := exec.Command("/bin/bash", "-c", cmdS)
 	if viper.GetBool("DEBUG") {
 		cmd.Stderr = os.Stderr
 	}
@@ -240,7 +240,7 @@ RUN mkdir -p /opt/blockchain/config \
 
 RUN cd /opt/blocknetdx/BlockDX \
   && chmod +x ./autogen.sh \
-  && ./autogen.sh \
+  && sleep 1 && ./autogen.sh \
   && ./configure LDFLAGS="-L/tmp/berkeley/lib/" CPPFLAGS="-I/tmp/berkeley/include/" --without-gui --enable-debug --enable-tests=0 \
   && make clean \
   && make -j$ecores \

@@ -34,7 +34,7 @@ func IsDockerInstalledAndRunning() bool {
 	var err error
 
 	// Check if docker exists in path
-	cmd := exec.Command("/bin/sh", "-c", `
+	cmd := exec.Command("/bin/bash", "-c", `
 		if [[ ! -z $(printf $(which docker)) ]]; then
 			printf 'exists'
 		else
@@ -44,14 +44,14 @@ func IsDockerInstalledAndRunning() bool {
 	cmd.Stderr = os.Stderr
 	var result []byte
 	if result, err = cmd.Output(); err != nil {
-		logrus.Error(err)
+		logrus.Error(errors.Wrap(err, "Failed startup check: is docker installed?"))
 		return false
 	}
 	// Does docker exist?
 	dockerExists := string(result) == "exists"
 
 	// Check if docker is running
-	cmdRu := exec.Command("/bin/sh", "-c", `
+	cmdRu := exec.Command("/bin/bash", "-c", `
 		if [[ $(docker ps) && $? == 0 ]]; then
 			printf 'running'
 		else
@@ -61,7 +61,7 @@ func IsDockerInstalledAndRunning() bool {
 	cmdRu.Stderr = os.Stderr
 	var resultR []byte
 	if resultR, err = cmdRu.Output(); err != nil {
-		logrus.Error(err)
+		logrus.Error(errors.Wrap(err, "Failed startup check: is docker running?"))
 		return false
 	}
 	// Is docker running
@@ -285,7 +285,7 @@ func BuildImage(ctx context.Context, docker *client.Client, dir, dockerFile, ima
 // IsComposeInstalled returns true if docker compose is installed. Returns false if
 // docker compose is not installed or if error occurred when checking.
 func IsComposeInstalled() bool {
-	cmd := exec.Command("/bin/sh", "-c", `
+	cmd := exec.Command("/bin/bash", "-c", `
 		if [[ -z $(printf $(which docker-compose)) ]]; then
 			printf 'no'
 		else
@@ -312,7 +312,7 @@ func CreateTestNetwork(cidr string) error {
 		return errors.New(fmt.Sprintf("Bad CIDR %s: should be in format 0.0.0.0/0", cidr))
 	}
 
-	cm := exec.Command("/bin/sh", "-c", `
+	cm := exec.Command("/bin/bash", "-c", `
 		if [[ -z $(docker network ls -qf name=blocknet) ]]; then
 			docker network create --subnet 172.5.0.0/16 --gateway 172.5.0.1 \
 				-o "com.docker.network.bridge.enable_icc"="true" \
