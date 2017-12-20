@@ -2,11 +2,13 @@ package util
 
 import (
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 // GitApplyPatch applies the specified patch string to the specified codebase.
@@ -22,7 +24,7 @@ func GitApplyPatch(patch, patchPath, codebase string) error {
 	}
 
 	// Apply patch to codebase (try revert patch if check fails)
-	cmd := exec.Command("/bin/sh", "-c", strings.Replace(`
+	cmd := exec.Command("/bin/bash", "-c", strings.Replace(`
 		check=$(git apply --check %s)
 		if [[ $? != 0 ]]; then
 			reset=$(git apply -R %s)
@@ -40,10 +42,13 @@ func GitApplyPatch(patch, patchPath, codebase string) error {
 		fi
 	`, "%s", patchPath, -1))
 	cmd.Dir = codebase
+	if viper.GetBool("DEBUG") {
+		cmd.Stderr = os.Stderr
+	}
 
 	result, err := cmd.Output()
 	if err != nil {
-		return errors.Wrapf(err, "Failed to apply genesis patch: %s", string(result))
+		return errors.Wrapf(err, "Failed to apply genesis patch, possible conflict: %s", string(result))
 	}
 	logrus.Info(string(result))
 
@@ -63,7 +68,7 @@ func GitRemovePatch(patch, patchPath, codebase string) error {
 	}
 
 	// Apply patch to codebase (try revert patch if check fails)
-	cmd := exec.Command("/bin/sh", "-c", strings.Replace(`
+	cmd := exec.Command("/bin/bash", "-c", strings.Replace(`
 		check=$(git apply --check %s)
 		if [[ $? != 0 ]]; then
 			reset=$(git apply -R %s)

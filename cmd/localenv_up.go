@@ -282,7 +282,7 @@ func setupChain(ctx context.Context, docker *client.Client) error {
 
 	// First import test address into alias and then generate test coin
 	cmd := blockRPCCommands(activator.Name, []string{"importprivkey cQiWHyehhhsRFYadBpj5wQRU9HU23GtHSjyPY2hBLccHWeNq6iTY coin", "setgenerate true 25"})
-	if output, err := cmd.Output(); err != nil {
+	if output, err := cmd.Output(); err != nil || string(output) == "" {
 		return errors.Wrap(err, "Failed to generate first 25 blocks")
 	} else {
 		logrus.Debug(string(output))

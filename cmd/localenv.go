@@ -169,9 +169,9 @@ func rpcCommands(name, exe string, cmds []string) *exec.Cmd {
 	var cmdS string
 	for i, c := range cmds {
 		// Build the command
-		cmdS += fmt.Sprintf("docker exec %s %s %s ", name, exe, c)
+		cmdS += fmt.Sprintf("docker exec %s %s %s", name, exe, c)
 		if i < len(cmds)-1 {
-			cmdS += "&& "
+			cmdS += " && "
 		}
 	}
 	cmd := exec.Command("/bin/bash", "-c", cmdS)
