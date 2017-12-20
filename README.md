@@ -9,26 +9,52 @@ Use `--config=` to load configurations of various setups.
 
 * Docker CE is required: https://www.docker.com/community-edition#/download
 
-`dxregress` utilizes glide package management https://glide.sh
-To pull vendor source:
+## dxregress localenv up /path/to/src
 
-```
-go get github.com/Masterminds/glide
-cd /path/to/dxregress
-glide install -v
-```
+The `localenv` command is used to test a development branch, including uncommitted code changes. This command applies a genesis patch to the codebase enabling regression testing in a local environment. Docker containers are used to facilitate communication between nodes. The local environment consists of 1 activator, 2 servicenodes and subsequent wallet nodes. The genesis patch is applied to the local codebase, as a result, building and running the code will result in the node joining the `localenv` environment. Normal debug operations are permitted as a result.
 
-# Creating localenv
-
+### Help
 ```
-# Help
 dxregress localenv -h
+```
 
-# Power up localenv with SYS,MONA wallet support
-dxregress localenv up -w=SYS,MONA /path/to/codebase
+### Start localenv with SYS, MONA wallet support
+```
+dxregress localenv up -w=SYS,SRGU54nrCQWdKj4TUX1yT5PLabo9ESxJKt,test,testAbc -w=MONA,MRPfADFi2ohhmVqgnDrrUx7TuVCmiEY9bB,test,testAbc /path/to/codebase
+```
 
-# Power down the localenv
+### Add an existing wallet to localenv (requires explicitly specifying RPC IPv4 address)
+```
+dxregress localenv up -w=SYS,SRGU54nrCQWdKj4TUX1yT5PLabo9ESxJKt,test,testAbc,192.168.1.200 -w=MONA,MRPfADFi2ohhmVqgnDrrUx7TuVCmiEY9bB,test,testAbc,192.168.1.201 /path/to/codebase
+```
+
+### Stop localenv
+```
 dxregress localenv down /path/to/codebase
+```
+
+## Docker
+
+Docker commands can be used to interact with the regression test environment.
+
+### List all containers
+```
+docker ps
+```
+
+### Ask a wallet node for a new address
+```
+docker exec dxregress-localenv-MONA monacoin-cli getnewaddress
+```
+
+### Watch a wallet node's debug.log
+```
+docker exec dxregress-localenv-MONA tail -f /opt/blockchain/data/debug.log
+```
+
+### Watch a servicenode's debug.log
+```
+docker exec dxregress-localenv-sn1 tail -f /opt/blockchain/dxregress/testnet4/debug.log
 ```
 
 # Copyright
