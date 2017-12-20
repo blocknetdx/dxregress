@@ -15,7 +15,9 @@ package cmd
 
 import (
 	"os"
+	"path"
 
+  "github.com/mitchellh/go-homedir"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -24,12 +26,17 @@ import (
 func createConfigPath() string {
 	runPath := getConfigPath()
 	if err := os.MkdirAll(runPath, 0755); err != nil {
-		logrus.Fatal(errors.Wrap(err, "Failed to create the configuration directory at %s", runPath))
+		logrus.Fatal(errors.Wrapf(err, "Failed to create the configuration directory at %s", runPath))
 	}
 	return runPath
 }
 
 // getConfigPath returns the configuration path.
 func getConfigPath() string {
-	return "/var/run/dxregress"
+	home, err := homedir.Dir()
+	if err != nil {
+		logrus.Error(errors.Wrapf(err, "Failed to get configuration path in $HOME/.dxregress %s", home))
+		os.Exit(1)
+	}
+	return path.Join(home, ".dxregress")
 }
