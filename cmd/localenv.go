@@ -344,7 +344,7 @@ servicenodeprivkey=` + snodeKey + `
 func xbridgeConf(wallets []chain.XWallet) string {
 	conf := chain.MAIN(xbridgeWalletList(wallets))
 	for _, wallet := range wallets {
-		conf += chain.DefaultXConfig(wallet.Name, wallet.Version, wallet.Address, wallet.IP, wallet.RPCUser, wallet.RPCPass) + "\n\n"
+		conf += chain.DefaultXConfig(wallet.Name, wallet.Version, wallet.Address, wallet.IP, wallet.RPCUser, wallet.RPCPass, wallet.BringOwn) + "\n\n"
 	}
 	return conf
 }
@@ -380,10 +380,14 @@ func walletNode(xwallet chain.XWallet) Node {
 
 	// Use the port as unique id
 	nodeID, _ := strconv.Atoi(xwallet.Port)
+	name := dxregressContainerName(xwallet.Name)
+	if xwallet.BringOwn {
+		name = "Virtual-" + xwallet.Name
+	}
 	return Node{
 		nodeID,
 		xwallet.Name,
-		dxregressContainerName(xwallet.Name),
+		name,
 		xwallet.Port,
 		xwallet.RPCPort,
 		debugPort,

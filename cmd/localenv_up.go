@@ -60,7 +60,7 @@ var localenvUpCmd = &cobra.Command{
 
 		// Check that wallets are valid
 		if len(p_wallets) == 0 {
-			logrus.Warn("No wallets specified. Use the --wallet flag: -w=SYS,version(optional),address,rpcuser,rpcpassword")
+			logrus.Warn("No wallets specified. Use the --wallet flag: -w=SYS,address,rpcuser,rpcpassword,wallet-rpc-ipaddress(optional)")
 		}
 		for _, cmdWallet := range p_wallets {
 			wallet, err := xwalletForCmdParameter(cmdWallet)
@@ -152,6 +152,11 @@ var localenvUpCmd = &cobra.Command{
 
 			// Start wallet containers
 			for _, w := range localWallets {
+				// Ignore BYOW nodes (bring your own wallet)
+				if w.BringOwn {
+					continue
+				}
+				// Create node from xwallet
 				wc := walletNode(w)
 				xwalletContainers = append(xwalletContainers, wc)
 				if err := containers.CreateAndStart(ctx, docker, w.Container, wc.Name, wc.Ports); err != nil {
@@ -211,7 +216,7 @@ var localenvUpCmd = &cobra.Command{
 
 func init() {
 	localenvCmd.AddCommand(localenvUpCmd)
-	localenvUpCmd.Flags().StringArrayVarP(&p_wallets, "wallet", "w", []string{}, "Test wallets")
+	localenvUpCmd.Flags().StringArrayVarP(&p_wallets, "wallet", "w", []string{}, "Specify test wallets: TICKER,address,rpcuser,rpcpassword,rpc-wallet-ipv4address(optional)")
 }
 
 // waitForLoadenv will block for a maximum of 30 seconds until the local environment is ready. The
@@ -508,17 +513,28 @@ func xwalletForCmdParameter(cmdWallet string) (chain.XWallet, error) {
 	// Remove all spaces from input
 	cmdArgs := strings.Split(strings.Replace(cmdWallet, " ", "", -1), ",")
 	if len(cmdArgs) < 4 {
-		return chain.XWallet{}, errors.New("Incorrect wallet format, the correct format is: TICKER,version(optional),address,rpcuser,rpcpassword")
+		return chain.XWallet{}, errors.New("Incorrect wallet format, the correct format is: TICKER,address,rpcuser,rpcpassword,rpc-wallet-ipv4address(optional)")
 	}
 	i := 0
 	name := cmdArgs[i]; i++
-	version := ""
-	// Assign version if match
-	if ok, _ := regexp.MatchString(`\d+\.\d+\.\d+\.`, cmdArgs[i]); ok {
-		version = cmdArgs[i]; i++
-	}
+	// TODO User specifiable version
+	//version := ""
+	//// Assign version if match
+	//if ok, _ := regexp.MatchString(`\d+\.\d+\.\d+\.`, cmdArgs[i]); ok {
+	//	version = cmdArgs[i]; i++
+	//}
 	address := cmdArgs[i]; i++
 	rpcuser := cmdArgs[i]; i++
-	rpcpass := cmdArgs[i]
-	return chain.CreateXWallet(name, version, address, ip, rpcuser, rpcpass), nil
+	rpcpass := cmdArgs[i]; i++
+	// Bring own wallet flag
+	bringOwnWallet := false
+	if i < len(cmdArgs) {
+		if ok, _ := regexp.MatchString(`\d+\.\d+\.\d+\.\d+`, cmdArgs[i]); !ok {
+			logrus.Warnf("Wallet %s IPv4 is the wrong format: %s", name, cmdArgs[i])
+		} else {
+			ip = cmdArgs[i]
+			bringOwnWallet = true
+		}
+	}
+	return chain.CreateXWallet(name, "", address, ip, rpcuser, rpcpass, bringOwnWallet), nil
 }
