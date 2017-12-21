@@ -31,14 +31,40 @@ sudo gpasswd -a $USER docker
 
 # Commands 
 
-## dxregress localenv up /path/to/src
-
-The `localenv` command is used to test a development branch, including uncommitted code changes. This command applies a genesis patch to the codebase enabling regression testing in a local environment. Docker containers are used to facilitate communication between nodes. The local environment consists of 1 activator, 2 servicenodes and subsequent wallet nodes. The genesis patch is applied to the local codebase, as a result, building and running the code will result in the node joining the `localenv` environment. Normal debug operations are permitted as a result.
-
-### Help
+## Help
 ```
 dxregress localenv -h
 ```
+
+## dxregress testenv up [version]
+
+The `testenv` command is used to create a quick test environment with an activator and servicenode. The activator will begin staking to kickoff the chain.
+
+### Create test environment
+```
+dxregress testenv up 3.7.36
+```
+
+### Create test environment with SYS, MONA wallet support
+```
+dxregress testenv up -w=SYS,SRGU54nrCQWdKj4TUX1yT5PLabo9ESxJKt,test,testAbc -w=MONA,MRPfADFi2ohhmVqgnDrrUx7TuVCmiEY9bB,test,testAbc 3.7.36
+```
+
+### Create test environment with coin wallet already running in background
+
+Make sure you specify the wallets' RPC IP address after the RPC password.
+```
+dxregress testenv up -w=SYS,SRGU54nrCQWdKj4TUX1yT5PLabo9ESxJKt,test,testAbc,192.168.1.200 -w=MONA,MRPfADFi2ohhmVqgnDrrUx7TuVCmiEY9bB,test,testAbc,192.168.1.201 3.7.36
+```
+
+### Stop testenv
+```
+dxregress testenv down
+```
+
+## dxregress localenv up /path/to/src
+
+The `localenv` command is used to test a development branch, including uncommitted code changes. This command applies a genesis patch to the codebase enabling regression testing in a local environment. Docker containers are used to facilitate communication between nodes. The local environment consists of 1 activator, 2 servicenodes and subsequent wallet nodes. The genesis patch is applied to the local codebase, as a result, building and running the code will result in the node joining the `localenv` environment. Normal debug operations are permitted as a result.
 
 ### Start localenv with SYS, MONA wallet support
 ```
