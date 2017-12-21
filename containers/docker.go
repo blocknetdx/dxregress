@@ -22,7 +22,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -47,14 +46,7 @@ func IsDockerInstalledAndRunning() bool {
 	var err error
 
 	// Check if docker exists in path
-	cmd := exec.Command("/bin/bash", "-c", `
-		if [[ ! -z $(printf $(which docker)) ]]; then
-			printf 'exists'
-		else
-			printf 'no'
-		fi
-	`)
-	cmd.Stderr = os.Stderr
+	cmd := cmdDockerExists()
 	var result []byte
 	if result, err = cmd.Output(); err != nil {
 		logrus.Error(errors.Wrap(err, "Failed startup check: is docker installed?"))
@@ -64,14 +56,7 @@ func IsDockerInstalledAndRunning() bool {
 	dockerExists := string(result) == "exists"
 
 	// Check if docker is running
-	cmdRu := exec.Command("/bin/bash", "-c", `
-		if [[ $(docker ps) && $? == 0 ]]; then
-			printf 'running'
-		else
-			printf 'no'
-		fi
-	`)
-	cmdRu.Stderr = os.Stderr
+	cmdRu := cmdDockerIsRunning()
 	var resultR []byte
 	if resultR, err = cmdRu.Output(); err != nil {
 		logrus.Error(errors.Wrap(err, "Failed startup check: is docker running?"))
@@ -361,15 +346,7 @@ func BuildImage(ctx context.Context, docker *client.Client, dir, DockerFile, ima
 // IsComposeInstalled returns true if docker compose is installed. Returns false if
 // docker compose is not installed or if error occurred when checking.
 func IsComposeInstalled() bool {
-	cmd := exec.Command("/bin/bash", "-c", `
-		if [[ -z $(printf $(which docker-compose)) ]]; then
-			printf 'no'
-		else
-			printf 'yes'
-		fi
-	`)
-	cmd.Stderr = os.Stderr
-
+	cmd := cmdComposeIsInstalled()
 	var result []byte
 	var err error
 	if result, err = cmd.Output(); err != nil {
@@ -388,21 +365,9 @@ func CreateTestNetwork(cidr string) error {
 		return errors.New(fmt.Sprintf("Bad CIDR %s: should be in format 0.0.0.0/0", cidr))
 	}
 
-	cm := exec.Command("/bin/bash", "-c", `
-		if [[ -z $(docker network ls -qf name=blocknet) ]]; then
-			docker network create --subnet 172.5.0.0/16 --gateway 172.5.0.1 \
-				-o "com.docker.network.bridge.enable_icc"="true" \
-				-o "com.docker.network.bridge.enable_ip_masquerade"="true" \
-				-o "com.docker.network.bridge.host_binding_ipv4"="127.0.0.1" \
-				-o "com.docker.network.driver.mtu"="1500" \
-				-o "com.docker.network.bridge.name"="blocknet0" blocknet
-			echo "Regression test network created"
-		fi
-	`)
-	cm.Stderr = os.Stderr
-
 	// Run the command
-	if err := cm.Run(); err != nil {
+	cmd := cmdCreateDockerNetwork()
+	if err := cmd.Run(); err != nil {
 		return errors.Wrap(err, "Failed to create docker network")
 	}
 

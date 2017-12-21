@@ -21,6 +21,7 @@ import (
 	"net"
 	"os"
 	"regexp"
+	"runtime"
 )
 
 // FileExists returns true if the path exists.
@@ -29,6 +30,36 @@ func FileExists(fPath string) bool {
 		return true
 	}
 	return false
+}
+
+// GetExecCmd returns the program name to be used with exec.Cmd instances.
+func GetExecCmd() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "PowerShell"
+	default:
+		return "/bin/bash"
+	}
+}
+
+// GetExecCmd returns the program name to be used with exec.Cmd instances.
+func GetExecCmdSwitch() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "-Command"
+	default:
+		return "-c"
+	}
+}
+
+// GetExecCmdConcat returns the program concat keyword for the current GOOS.
+func GetExecCmdConcat() string {
+	switch runtime.GOOS {
+	case "windows":
+		return ";"
+	default:
+		return "&&"
+	}
 }
 
 // GetLocalIP returns the first local ip address found

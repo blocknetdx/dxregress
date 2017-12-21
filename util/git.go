@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -37,23 +38,7 @@ func GitApplyPatch(patch, patchPath, codebase string) error {
 	}
 
 	// Apply patch to codebase (try revert patch if check fails)
-	cmd := exec.Command("/bin/bash", "-c", strings.Replace(`
-		check=$(git apply --check %s)
-		if [[ $? != 0 ]]; then
-			reset=$(git apply -R %s)
-			if [[ $? != 0 ]]; then
-				printf "Reverting patch failed, check codebase: git apply -R %s"
-				exit 1
-			fi
-		fi
-		apply=$(git apply %s)
-		if [[ $? != 0 ]]; then
-			printf "Patch failed for %s"
-			exit 1
-		else
-			printf "Genesis patch applied"
-		fi
-	`, "%s", patchPath, -1))
+	cmd := exec.Command(GetExecCmd(), GetExecCmdSwitch(), strings.Replace(applyPatchCmd(), "%s", patchPath, -1))
 	cmd.Dir = codebase
 	if viper.GetBool("DEBUG") {
 		cmd.Stderr = os.Stderr
@@ -81,17 +66,11 @@ func GitRemovePatch(patch, patchPath, codebase string) error {
 	}
 
 	// Apply patch to codebase (try revert patch if check fails)
-	cmd := exec.Command("/bin/bash", "-c", strings.Replace(`
-		check=$(git apply --check %s)
-		if [[ $? != 0 ]]; then
-			reset=$(git apply -R %s)
-			if [[ $? != 0 ]]; then
-				printf "Reverting patch failed, check codebase: git apply -R %s"
-				exit 1
-			fi
-		fi
-	`, "%s", patchPath, -1))
+	cmd := exec.Command(GetExecCmd(), GetExecCmdSwitch(), strings.Replace(revertPatchCmd(), "%s", patchPath, -1))
 	cmd.Dir = codebase
+	if viper.GetBool("DEBUG") {
+		cmd.Stderr = os.Stderr
+	}
 
 	result, err := cmd.Output()
 	if err != nil {
@@ -102,4 +81,70 @@ func GitRemovePatch(patch, patchPath, codebase string) error {
 	}
 
 	return nil
+}
+
+// applyPatchCmd returns the command string that applies the patch in the current GOOS.
+func applyPatchCmd() string {
+	if runtime.GOOS == "windows" {
+		return `
+			$gitApply = (git apply --check %s) | Out-String
+			if ($LASTEXITCODE -ne 0) {
+				$reset = (git apply -R %s) | Out-String
+				if ($LASTEXITCODE -ne 0) {
+					Write-Host "Reverting patch failed, check codebase: git apply -R %s"
+					exit 1
+				}
+			}
+			$gitApply2 = (git apply %s) | Out-String
+			if ($LASTEXITCODE -ne 0) {
+				Write-Host "Patch failed for %s"
+				exit 1
+			} else {
+				Write-Host "Genesis patch applied"
+			}
+		`
+	}
+	// Return default for darwin/linux
+	return `
+		check=$(git apply --check %s)
+		if [[ $? != 0 ]]; then
+			reset=$(git apply -R %s)
+			if [[ $? != 0 ]]; then
+				printf "Reverting patch failed, check codebase: git apply -R %s"
+				exit 1
+			fi
+		fi
+		apply=$(git apply %s)
+		if [[ $? != 0 ]]; then
+			printf "Patch failed for %s"
+			exit 1
+		else
+			printf "Genesis patch applied"
+		fi
+	`
+}
+
+func revertPatchCmd() string {
+	if runtime.GOOS == "windows" {
+		return `
+			$gitApply = (git apply --check %s) | Out-String
+			if ($LASTEXITCODE -ne 0) {
+				$reset = (git apply -R %s) | Out-String
+				if ($LASTEXITCODE -ne 0) {
+					Write-Host "Reverting patch failed, check codebase: git apply -R %s"
+					exit 1
+				}
+			}
+		`
+	}
+	return `
+		check=$(git apply --check %s)
+		if [[ $? != 0 ]]; then
+			reset=$(git apply -R %s)
+			if [[ $? != 0 ]]; then
+				printf "Reverting patch failed, check codebase: git apply -R %s"
+				exit 1
+			fi
+		fi
+	`
 }

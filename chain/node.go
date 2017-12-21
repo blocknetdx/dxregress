@@ -64,7 +64,7 @@ type SNode struct {
 
 // RPCCommand returns a command compatible with a running node.
 func RPCCommand(name, exe, cmd string) *exec.Cmd {
-	c := exec.Command("/bin/bash", "-c", fmt.Sprintf("docker exec %s %s %s", name, exe, cmd))
+	c := exec.Command(util.GetExecCmd(), util.GetExecCmdSwitch(), fmt.Sprintf("docker exec %s %s %s", name, exe, cmd))
 	logrus.Debug(strings.Join(c.Args, " "))
 	if viper.GetBool("DEBUG") {
 		c.Stderr = os.Stderr
@@ -79,10 +79,10 @@ func RPCCommands(name, exe string, cmds []string) *exec.Cmd {
 		// Build the command
 		cmdS += fmt.Sprintf("docker exec %s %s %s", name, exe, c)
 		if i < len(cmds)-1 {
-			cmdS += " && "
+			cmdS += fmt.Sprintf(" %s ", util.GetExecCmdConcat())
 		}
 	}
-	cmd := exec.Command("/bin/bash", "-c", cmdS)
+	cmd := exec.Command(util.GetExecCmd(), util.GetExecCmdSwitch(), cmdS)
 	if viper.GetBool("DEBUG") {
 		cmd.Stderr = os.Stderr
 	}
