@@ -35,7 +35,7 @@ var p_wallets []string
 // localenvUpCmd represents the up command
 var localenvUpCmd = &cobra.Command{
 	Use:   "up",
-	Short: "Creates a new test environment from the local codebase",
+	Short: "Create a regression test environment from a local codebase",
 	Long:  `The path to the codebase must be specified in the command.`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -99,7 +99,7 @@ var localenvUpCmd = &cobra.Command{
 			ConfigPath:          configPath,
 			WorkingDirectory:    codedir,
 			ContainerPrefix:     localenvPrefix,
-			DefaultImage:        containerImage,
+			DefaultImage:        localenvContainerImage,
 			ContainerFilter:     localEnvContainerFilter(""),
 			ContainerFilterFunc: localEnvContainerFilter,
 			GenesisPatch:        chain.GenesisPatchV1(),
@@ -125,7 +125,7 @@ var localenvUpCmd = &cobra.Command{
 			}
 			// Build image
 			logrus.Info("Building localenv container image, please wait...")
-			if err := containers.BuildImage(ctx, docker, codedir, path.Base(dockerfile), containerImage, chain.BlockDefaultWalletDat()); err != nil {
+			if err := containers.BuildImage(ctx, docker, codedir, path.Base(dockerfile), localenvContainerImage, chain.BlockDefaultWalletDat()); err != nil {
 				waitChan <- err
 				return
 			}

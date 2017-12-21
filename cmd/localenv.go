@@ -21,7 +21,7 @@ import (
 )
 
 const localenvPrefix = "dxregress-localenv-"
-const containerImage = "blocknetdx/dxregress:localenv"
+const localenvContainerImage = "blocknetdx/dxregress:localenv"
 
 var codedir string
 
