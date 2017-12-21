@@ -13,7 +13,7 @@ Use `--config=` to load configurations of various setups.
 
 2) Install dxregress via go get:
 ```
-go get github.com/BlocknetDX/dxregress
+go get -u github.com/BlocknetDX/dxregress
 ```
 
 3) Add go/bin to $PATH (linux):
