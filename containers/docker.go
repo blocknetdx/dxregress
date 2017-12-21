@@ -25,6 +25,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 // IsDockerInstalledAndRunning returns true if docker is installed. Returns false if docker
@@ -140,6 +141,20 @@ func CreateAndStart(ctx context.Context, docker *client.Client, image, name stri
 		PortBindings: ports,
 	}
 	ncfg := network.NetworkingConfig{}
+	nameFilter := filters.NewArgs()
+	nameFilter.Add("reference", image)
+	if images, err := docker.ImageList(ctx, types.ImageListOptions{Filters:nameFilter}); err != nil {
+		logrus.Error(errors.Wrapf(err, "Failed to query existing docker images"))
+	} else if len(images) == 0 {
+		if out, err := docker.ImagePull(ctx, image, types.ImagePullOptions{}); err != nil {
+			return errors.Wrapf(err, "Failed to pull image %s", image)
+		} else {
+			logrus.Infof("Pulling image %s, this may take a few minutes...", image)
+			if viper.GetBool("DEBUG") {
+				io.Copy(os.Stdout, out)
+			}
+		}
+	}
 	result, err := docker.ContainerCreate(ctx, &cfg, &hcfg, &ncfg, name)
 	if err != nil {
 		return errors.Wrapf(err, "Failed to create %s container [%s]", name, image)
