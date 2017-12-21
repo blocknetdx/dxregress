@@ -22,6 +22,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+const dockerFileName = "Dockerfile-dxregress"
+
 var p_config string
 var p_version bool
 

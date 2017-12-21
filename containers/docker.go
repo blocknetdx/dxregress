@@ -17,7 +17,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/BlocknetDX/dxregress/chain"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -71,8 +70,8 @@ func IsDockerInstalledAndRunning() bool {
 }
 
 // CreateDockerfile at the specified path.
-func CreateDockerfile(dockerFile, filePath string) error {
-	if err := ioutil.WriteFile(filePath, []byte(dockerFile), 0755); err != nil {
+func CreateDockerfile(DockerFile, filePath string) error {
+	if err := ioutil.WriteFile(filePath, []byte(DockerFile), 0755); err != nil {
 		return errors.Wrapf(err, "Failed to write docker file to path %s", filePath)
 	}
 	return nil
@@ -195,11 +194,55 @@ func RestartContainers(ctx context.Context, docker *client.Client, filter string
 	return nil
 }
 
+// StopAllContainers stops the containers matching the filter.
+func StopAllContainers(ctx context.Context, docker *client.Client, filter string, suppressLogs bool) error {
+	containerList, err := FindContainers(docker, filter)
+	if err != nil {
+		return err
+	}
+	if len(containerList) == 0 {
+		logrus.Info("No localenv containers")
+		return nil
+	}
+
+	// Stop containers in parallel
+	wg := new(sync.WaitGroup)
+	for _, c := range containerList {
+		wg.Add(1)
+		go func(c types.Container) {
+			name := c.Names[0]
+			if !suppressLogs {
+				logrus.Infof("Removing localenv container %s, please wait...", name)
+			}
+			if err := StopAndRemove(ctx, docker, c.ID); err != nil {
+				logrus.Errorf("Failed to remove %s: %s", name, err.Error())
+			} else if !suppressLogs {
+				logrus.Infof("Removed %s", name)
+			}
+			wg.Done()
+		}(c)
+	}
+
+	waitChan := make(chan bool, 1)
+	go func() {
+		wg.Wait()
+		waitChan <- true
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-waitChan:
+	}
+
+	return nil
+}
+
 // BuildImage builds image from path
-func BuildImage(ctx context.Context, docker *client.Client, dir, dockerFile, imageName string) error {
+func BuildImage(ctx context.Context, docker *client.Client, dir, DockerFile, imageName string, defaultWalletDat []byte) error {
+	// Prep context in tar
 	tarBuf := new(bytes.Buffer)
 	tw := tar.NewWriter(tarBuf)
-	// Prep context in tar
 	if err := filepath.Walk(dir, func(f string, info os.FileInfo, err error) error {
 		if err != nil {
 			logrus.Error(err)
@@ -228,18 +271,21 @@ func BuildImage(ctx context.Context, docker *client.Client, dir, dockerFile, ima
 	}); err != nil {
 		return errors.Wrapf(err, "Failed to build image from source %s", dir)
 	}
+
 	// Add default wallet file
-	walletFile := chain.WalletData()
-	if err := tw.WriteHeader(&tar.Header{
-		Name: "wallet.dat",
-		Mode: 0600,
-		Size: int64(len(walletFile)),
-	}); err != nil {
-		logrus.Error(err)
+	if len(defaultWalletDat) > 0 {
+		if err := tw.WriteHeader(&tar.Header{
+			Name: "wallet.dat",
+			Mode: 0600,
+			Size: int64(len(defaultWalletDat)),
+		}); err != nil {
+			logrus.Error(err)
+		}
+		if _, err := tw.Write(defaultWalletDat); err != nil {
+			logrus.Error(err)
+		}
 	}
-	if _, err := tw.Write(walletFile); err != nil {
-		logrus.Error(err)
-	}
+
 	// Close tar file
 	if err := tw.Close(); err != nil {
 		return err
@@ -251,7 +297,7 @@ func BuildImage(ctx context.Context, docker *client.Client, dir, dockerFile, ima
 	buildOpts := types.ImageBuildOptions{
 		PullParent: true,
 		Remove: true,
-		Dockerfile: dockerFile,
+		Dockerfile: DockerFile,
 		Labels: labels,
 		Tags: []string{imageName},
 	}

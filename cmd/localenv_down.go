@@ -20,13 +20,15 @@ import (
 	"path"
 
 	"github.com/BlocknetDX/dxregress/chain"
+	"github.com/BlocknetDX/dxregress/containers"
 	"github.com/BlocknetDX/dxregress/util"
 	"github.com/docker/docker/client"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
-// localenvDownCmd represents the down command
+// localenvDownCmd manages the localenv down command, which is responsible for terminating the local
+// test environment.
 var localenvDownCmd = &cobra.Command{
 	Use:   "down",
 	Short: "Stops the local test environment",
@@ -42,12 +44,12 @@ var localenvDownCmd = &cobra.Command{
 		}
 
 		// Remove genesis patch to codebase
-		if err := util.GitRemovePatch(chain.GenesisPatchV1(), path.Join(getConfigPath(), genesisPatchFile), codedir); err != nil {
+		if err := util.GitRemovePatch(chain.GenesisPatchV1(), path.Join(getConfigPath(), chain.GenesisPatchFile), codedir); err != nil {
 			logrus.Error(err)
 		}
 
 		// Remove dockerfile
-		dockerfile := path.Join(codedir, dockerFilePath)
+		dockerfile := path.Join(codedir, dockerFileName)
 		if util.FileExists(dockerfile) {
 			if err := os.Remove(dockerfile); err != nil {
 				logrus.Error(err)
@@ -71,7 +73,7 @@ var localenvDownCmd = &cobra.Command{
 		waitChan := make(chan bool, 1)
 		go func() {
 			// Stop and remove containers
-			if err := stopAllLocalEnvContainers(ctx, docker, false); err != nil {
+			if err := containers.StopAllContainers(ctx, docker, localEnvContainerFilter(""), false); err != nil {
 				logrus.Error(err)
 				waitChan <- false
 			} else {
