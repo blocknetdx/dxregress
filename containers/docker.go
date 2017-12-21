@@ -152,6 +152,8 @@ func CreateAndStart(ctx context.Context, docker *client.Client, image, name stri
 			logrus.Infof("Pulling image %s, this may take a few minutes...", image)
 			if viper.GetBool("DEBUG") {
 				io.Copy(os.Stdout, out)
+			} else {
+				io.Copy(ioutil.Discard, out)
 			}
 		}
 	}
