@@ -90,7 +90,7 @@ func (env *TestEnv) Start(ctx context.Context) error {
 		}
 	}
 
-	logrus.Info("Waiting for to be ready...")
+	logrus.Info("Waiting for nodes to be ready...")
 	if err := WaitForEnv(ctx, 45, env.config.Nodes); err != nil {
 		return err
 	}
@@ -272,7 +272,7 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 	}
 
 	// Wait for nodes to be ready
-	logrus.Info("Waiting for nodes to be ready...")
+	logrus.Info("Waiting for nodes and wallets to be ready...")
 	allContainers := append(env.config.Nodes, env.xwalletNodes...)
 	if err := WaitForEnv(ctx, 45, allContainers); err != nil {
 		return err
