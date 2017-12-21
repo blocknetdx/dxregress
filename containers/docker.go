@@ -201,7 +201,7 @@ func StopAllContainers(ctx context.Context, docker *client.Client, filter string
 		return err
 	}
 	if len(containerList) == 0 {
-		logrus.Info("No localenv containers")
+		logrus.Info("No containers")
 		return nil
 	}
 

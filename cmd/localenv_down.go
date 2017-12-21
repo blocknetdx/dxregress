@@ -20,7 +20,6 @@ import (
 	"path"
 
 	"github.com/BlocknetDX/dxregress/chain"
-	"github.com/BlocknetDX/dxregress/containers"
 	"github.com/BlocknetDX/dxregress/util"
 	"github.com/docker/docker/client"
 	"github.com/sirupsen/logrus"
@@ -31,7 +30,7 @@ import (
 // test environment.
 var localenvDownCmd = &cobra.Command{
 	Use:   "down",
-	Short: "Stops the local test environment",
+	Short: "Terminate the local test environment",
 	Long:  `The path to the codebase must be specified in the command.`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -66,6 +65,19 @@ var localenvDownCmd = &cobra.Command{
 		}
 		defer docker.Close()
 
+		// Path to localenv config dir
+		configPath := path.Join(getConfigPath(), "localenv")
+
+		// Create the localenv test environment
+		testEnv := chain.NewTestEnv(&chain.EnvConfig{
+			ConfigPath:          configPath,
+			ContainerPrefix:     localenvPrefix,
+			DefaultImage:        localenvContainerImage,
+			ContainerFilter:     localenvContainerFilter(""),
+			ContainerFilterFunc: localenvContainerFilter,
+			DockerFileName:      dockerFileName,
+		}, docker)
+
 		// Capture container stop success
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -73,7 +85,7 @@ var localenvDownCmd = &cobra.Command{
 		waitChan := make(chan bool, 1)
 		go func() {
 			// Stop and remove containers
-			if err := containers.StopAllContainers(ctx, docker, localEnvContainerFilter(""), false); err != nil {
+			if err := testEnv.Stop(ctx); err != nil {
 				logrus.Error(err)
 				waitChan <- false
 			} else {
@@ -98,7 +110,6 @@ var localenvDownCmd = &cobra.Command{
 				logrus.Info("Failed to shutdown localenv")
 			}
 		}
-
 	},
 }
 

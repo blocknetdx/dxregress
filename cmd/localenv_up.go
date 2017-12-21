@@ -15,22 +15,19 @@ package cmd
 
 import (
 	"context"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"path"
-	"regexp"
 	"strings"
 
 	"github.com/BlocknetDX/dxregress/chain"
 	"github.com/BlocknetDX/dxregress/containers"
 	"github.com/BlocknetDX/dxregress/util"
 	"github.com/docker/docker/client"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
-
-var p_wallets []string
 
 // localenvUpCmd represents the up command
 var localenvUpCmd = &cobra.Command{
@@ -40,9 +37,9 @@ var localenvUpCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		// Obtain the codebase directory
-		codedir = args[0]
-		if !util.FileExists(codedir) {
-			logrus.Errorf("Invalid codebase directory: %s", codedir)
+		localenvCodeDir = args[0]
+		if !util.FileExists(localenvCodeDir) {
+			logrus.Errorf("Invalid codebase directory: %s", localenvCodeDir)
 			stop()
 			return
 		}
@@ -60,7 +57,7 @@ var localenvUpCmd = &cobra.Command{
 			logrus.Warn("No wallets specified. Use the --wallet flag: -w=SYS,address,rpcuser,rpcpassword,wallet-rpc-ipaddress(optional)")
 		}
 		for _, cmdWallet := range p_wallets {
-			wallet, err := xwalletForCmdParameter(cmdWallet)
+			wallet, err := chain.XWalletForCmdParameter(cmdWallet)
 			if err != nil || !chain.SupportsWallet(wallet.Name) {
 				logrus.Errorf("Unsupported wallet %s", wallet.Name)
 				stop()
@@ -90,6 +87,7 @@ var localenvUpCmd = &cobra.Command{
 			stop()
 			return
 		}
+		defer docker.Close()
 
 		// Path to localenv config dir
 		configPath := path.Join(getConfigPath(), "localenv")
@@ -97,12 +95,10 @@ var localenvUpCmd = &cobra.Command{
 		// Create the localenv test environment
 		testEnv := chain.NewTestEnv(&chain.EnvConfig{
 			ConfigPath:          configPath,
-			WorkingDirectory:    codedir,
 			ContainerPrefix:     localenvPrefix,
 			DefaultImage:        localenvContainerImage,
-			ContainerFilter:     localEnvContainerFilter(""),
-			ContainerFilterFunc: localEnvContainerFilter,
-			GenesisPatch:        chain.GenesisPatchV1(),
+			ContainerFilter:     localenvContainerFilter(""),
+			ContainerFilterFunc: localenvContainerFilter,
 			DockerFileName:      dockerFileName,
 			Activator:           activator,
 			Nodes:               localNodes,
@@ -110,7 +106,7 @@ var localenvUpCmd = &cobra.Command{
 		}, docker)
 
 		// Docker file in the main codebase
-		dockerfile := path.Join(codedir, dockerFileName)
+		dockerfile := path.Join(localenvCodeDir, dockerFileName)
 
 		// Support interrupting container build process
 		waitChan := make(chan error, 1)
@@ -118,6 +114,16 @@ var localenvUpCmd = &cobra.Command{
 		defer cancel()
 
 		go func() {
+			// Copy wallet to config path
+			if err := ioutil.WriteFile(path.Join(configPath, "wallet.dat"), chain.BlockDefaultWalletDat(), 0644); err != nil {
+				waitChan <- err
+				return
+			}
+			// Apply genesis patch to codebase
+			if err := util.GitApplyPatch(chain.GenesisPatchV1(), path.Join(getConfigPath(), chain.GenesisPatchFile), localenvCodeDir); err != nil {
+				waitChan <- err
+				return
+			}
 			// Write docker file
 			if err := containers.CreateDockerfile(chain.NodeDockerfile(), dockerfile); err != nil {
 				waitChan <- err
@@ -125,7 +131,7 @@ var localenvUpCmd = &cobra.Command{
 			}
 			// Build image
 			logrus.Info("Building localenv container image, please wait...")
-			if err := containers.BuildImage(ctx, docker, codedir, path.Base(dockerfile), localenvContainerImage, chain.BlockDefaultWalletDat()); err != nil {
+			if err := containers.BuildImage(ctx, docker, localenvCodeDir, path.Base(dockerfile), localenvContainerImage, chain.BlockDefaultWalletDat()); err != nil {
 				waitChan <- err
 				return
 			}
@@ -174,37 +180,4 @@ var localenvUpCmd = &cobra.Command{
 
 func init() {
 	localenvCmd.AddCommand(localenvUpCmd)
-	localenvUpCmd.Flags().StringArrayVarP(&p_wallets, "wallet", "w", []string{}, "Specify test wallets: TICKER,address,rpcuser,rpcpassword,rpc-wallet-ipv4address(optional)")
-}
-
-// xwalletForCmdParameter returns an XWallet struct from wallet command line parameter.
-func xwalletForCmdParameter(cmdWallet string) (chain.XWallet, error) {
-	ip := util.GetLocalIP()
-	// Remove all spaces from input
-	cmdArgs := strings.Split(strings.Replace(cmdWallet, " ", "", -1), ",")
-	if len(cmdArgs) < 4 {
-		return chain.XWallet{}, errors.New("Incorrect wallet format, the correct format is: TICKER,address,rpcuser,rpcpassword,rpc-wallet-ipv4address(optional)")
-	}
-	i := 0
-	name := cmdArgs[i]; i++
-	// TODO User specifiable version
-	//version := ""
-	//// Assign version if match
-	//if ok, _ := regexp.MatchString(`\d+\.\d+\.\d+\.`, cmdArgs[i]); ok {
-	//	version = cmdArgs[i]; i++
-	//}
-	address := cmdArgs[i]; i++
-	rpcuser := cmdArgs[i]; i++
-	rpcpass := cmdArgs[i]; i++
-	// Bring own wallet flag
-	bringOwnWallet := false
-	if i < len(cmdArgs) {
-		if ok, _ := regexp.MatchString(`\d+\.\d+\.\d+\.\d+`, cmdArgs[i]); !ok {
-			logrus.Warnf("Wallet %s IPv4 is the wrong format: %s", name, cmdArgs[i])
-		} else {
-			ip = cmdArgs[i]
-			bringOwnWallet = true
-		}
-	}
-	return chain.CreateXWallet(name, "", address, ip, rpcuser, rpcpass, bringOwnWallet), nil
 }

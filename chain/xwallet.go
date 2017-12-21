@@ -2,7 +2,12 @@ package chain
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
+
+	"github.com/BlocknetDX/dxregress/util"
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -161,6 +166,38 @@ func DefaultXConfig(coin, version, address, ip, rpcuser, rpcpass string, bringOw
 	}
 
 	return ""
+}
+
+// XWalletForCmdParameter returns an XWallet struct from wallet command line parameter.
+func XWalletForCmdParameter(cmdWallet string) (XWallet, error) {
+	ip := util.GetLocalIP()
+	// Remove all spaces from input
+	cmdArgs := strings.Split(strings.Replace(cmdWallet, " ", "", -1), ",")
+	if len(cmdArgs) < 4 {
+		return XWallet{}, errors.New("Incorrect wallet format, the correct format is: TICKER,address,rpcuser,rpcpassword,rpc-wallet-ipv4address(optional)")
+	}
+	i := 0
+	name := cmdArgs[i]; i++
+	// TODO User specifiable version
+	//version := ""
+	//// Assign version if match
+	//if ok, _ := regexp.MatchString(`\d+\.\d+\.\d+\.`, cmdArgs[i]); ok {
+	//	version = cmdArgs[i]; i++
+	//}
+	address := cmdArgs[i]; i++
+	rpcuser := cmdArgs[i]; i++
+	rpcpass := cmdArgs[i]; i++
+	// Bring own wallet flag
+	bringOwnWallet := false
+	if i < len(cmdArgs) {
+		if ok, _ := regexp.MatchString(`\d+\.\d+\.\d+\.\d+`, cmdArgs[i]); !ok {
+			logrus.Warnf("Wallet %s IPv4 is the wrong format: %s", name, cmdArgs[i])
+		} else {
+			ip = cmdArgs[i]
+			bringOwnWallet = true
+		}
+	}
+	return CreateXWallet(name, "", address, ip, rpcuser, rpcpass, bringOwnWallet), nil
 }
 
 // MAIN returns the main config section.

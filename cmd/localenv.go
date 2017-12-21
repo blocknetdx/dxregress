@@ -23,7 +23,7 @@ import (
 const localenvPrefix = "dxregress-localenv-"
 const localenvContainerImage = "blocknetdx/dxregress:localenv"
 
-var codedir string
+var localenvCodeDir string
 
 // localenvCmd represents the localenv command
 var localenvCmd = &cobra.Command{
@@ -46,7 +46,7 @@ func init() {
 	RootCmd.AddCommand(localenvCmd)
 }
 
-// localEnvContainerFilter returns the regex filter for the localenv containers.
-func localEnvContainerFilter(prefix string) string {
+// localenvContainerFilter returns the regex filter for the localenv containers.
+func localenvContainerFilter(prefix string) string {
 	return fmt.Sprintf(`^/%s%s[^\s]+$`, localenvPrefix, prefix)
 }

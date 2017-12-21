@@ -25,12 +25,10 @@ type Environment interface {
 
 type EnvConfig struct {
 	ConfigPath          string
-	WorkingDirectory    string
 	ContainerPrefix     string
 	DefaultImage        string
 	ContainerFilter     string
 	ContainerFilterFunc func(filter string) string
-	GenesisPatch        string
 	DockerFileName      string
 	Activator           Node
 	Nodes               []Node
@@ -46,27 +44,22 @@ type TestEnv struct {
 
 // Start the environment.
 func (env *TestEnv) Start(ctx context.Context) error {
-	// Apply genesis patch to codebase
-	if err := util.GitApplyPatch(GenesisPatchV1(), path.Join(env.config.ConfigPath, GenesisPatchFile), env.config.WorkingDirectory); err != nil {
-		return err
-	}
-
 	// Write test blocknetdx.conf file
 	testLocalenvDir := path.Dir(TestBlocknetConfFile(env.config.ConfigPath))
 	if err := os.MkdirAll(testLocalenvDir, 0775); err != nil {
-		return errors.Wrapf(err, "Failed to create localenv directory %s", testLocalenvDir)
+		return errors.Wrapf(err, "Failed to create directory %s", testLocalenvDir)
 	}
 	if err := ioutil.WriteFile(TestBlocknetConfFile(env.config.ConfigPath), []byte(TestBlocknetConf(env.config.Nodes)), 0644); err != nil {
-		errors.Wrapf(err, "Failed to write localenv blocknetdx.conf %s", TestBlocknetConfFile(env.config.ConfigPath))
+		errors.Wrapf(err, "Failed to write blocknetdx.conf %s", TestBlocknetConfFile(env.config.ConfigPath))
 	}
 
-	// Stop all localenv containers
-	logrus.Info("Removing previous localenv containers...")
+	// Stop all containers
+	logrus.Info("Removing previous test containers...")
 	if err := containers.StopAllContainers(ctx, env.docker, env.config.ContainerFilter, true); err != nil {
 		logrus.Error(err)
 	}
 
-	// Start localenv containers
+	// Start containers
 	for _, c := range env.config.Nodes {
 		if err := containers.CreateAndStart(ctx, env.docker, env.config.DefaultImage, c.Name, c.Ports); err != nil {
 			return err
@@ -97,7 +90,7 @@ func (env *TestEnv) Start(ctx context.Context) error {
 		}
 	}
 
-	logrus.Info("Waiting for localenv to be ready...")
+	logrus.Info("Waiting for to be ready...")
 	if err := WaitForEnv(ctx, 45, env.config.Nodes); err != nil {
 		return err
 	}
@@ -112,7 +105,10 @@ func (env *TestEnv) Start(ctx context.Context) error {
 
 // Stop the environment, including performing necessary tear down.
 func (env *TestEnv) Stop(ctx context.Context) error {
-	env.docker.Close()
+	if err := containers.StopAllContainers(ctx, env.docker, env.config.ContainerFilterFunc(""), false); err != nil {
+		logrus.Error(err)
+		return err
+	}
 	return nil
 }
 

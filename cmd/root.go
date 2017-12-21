@@ -26,6 +26,7 @@ const dockerFileName = "Dockerfile-dxregress"
 
 var p_config string
 var p_version bool
+var p_wallets []string
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
@@ -59,6 +60,7 @@ func init() {
 
 	// Default flags
 	RootCmd.PersistentFlags().StringVar(&p_config, "config", "", "config file")
+	RootCmd.PersistentFlags().StringArrayVarP(&p_wallets, "wallet", "w", []string{}, "Specify test wallets: TICKER,address,rpcuser,rpcpassword,rpc-wallet-ipv4address(optional)")
 	RootCmd.Flags().BoolVarP(&p_version, "version", "v", false, "Print version")
 }
 
