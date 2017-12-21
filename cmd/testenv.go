@@ -14,9 +14,13 @@
 package cmd
 
 import (
-	"github.com/sirupsen/logrus"
+	"fmt"
+
+	"github.com/BlocknetDX/dxregress/containers"
 	"github.com/spf13/cobra"
 )
+
+const testenvPrefix = "dxregress-testenv-"
 
 // testEnvCmd represents the env command
 var testEnvCmd = &cobra.Command{
@@ -24,14 +28,28 @@ var testEnvCmd = &cobra.Command{
 	Short: "Create a regression test environment",
 	Long: `The regression test environment includes an activator node, servicenode and premined
 chain.`,
+	Args:  cobra.ExactArgs(1),
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		if !containers.IsDockerInstalledAndRunning() {
+			stop()
+			return
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
-		logrus.Info("testenv called")
 
 	},
 }
 
 func init() {
 	RootCmd.AddCommand(testEnvCmd)
+}
 
-	testEnvCmd.PersistentFlags().String("client-version", "-c", "Client version to use for the spun-up nodes.")
+// testenvContainerFilter returns the regex filter for the testenv containers.
+func testenvContainerFilter(prefix string) string {
+	return fmt.Sprintf(`^/%s%s[^\s]+$`, testenvPrefix, prefix)
+}
+
+// testenvContainerImage returns the blocknet container image for the specified version.
+func testenvContainerImage(version string) string {
+	return fmt.Sprintf("blocknetdx/dxregress/blocknet:%s", version)
 }
