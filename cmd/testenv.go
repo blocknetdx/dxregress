@@ -51,5 +51,5 @@ func testenvContainerFilter(prefix string) string {
 
 // testenvContainerImage returns the blocknet container image for the specified version.
 func testenvContainerImage(version string) string {
-	return fmt.Sprintf("blocknetdx/dxregress/blocknet:%s", version)
+	return fmt.Sprintf("blocknetdx/dxregress-blocknet:%s", version)
 }
