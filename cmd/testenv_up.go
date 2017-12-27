@@ -81,7 +81,7 @@ their own blockchain, separate from both mainnet and testnet.'`,
 
 		activator := chain.NodeForID(chain.Activator, localNodes)
 
-		// Build container image
+		// Create docker client
 		var err error
 		docker, err := client.NewEnvClient()
 		if err != nil {
