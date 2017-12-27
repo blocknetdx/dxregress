@@ -301,6 +301,7 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 	}
 
 	// Wait before restarting staker
+	logrus.Info("Waiting to start staking on activator...")
 	time.Sleep(10 * time.Second)
 
 	// Restart the activator to trigger staking
