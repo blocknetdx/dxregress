@@ -316,7 +316,7 @@ func ServicenodeConf(snodes []SNode) string {
 }
 
 // BlocknetdxConf returns a blocknetdx.conf with the specified parameters.
-func BlocknetdxConf(currentNode int, nodes []Node, snodeKey string) string {
+func BlocknetdxConf(currentNode int, nodes []Node, connectLocalenv bool, snodeKey string) string {
 	base := `datadir=/opt/blockchain/dxregress
 testnet=1
 dbcache=256
@@ -340,6 +340,10 @@ rpcclienttimeout=15
 	localIP := util.GetLocalIP()
 	base += `whitelist=0.0.0.0/0
 `
+	// Assumes the localenv test node is listening on port 41476
+	if connectLocalenv {
+		base += fmt.Sprintf("connect=%s:%s\n", localIP, "41476")
+	}
 
 	var cnode Node
 	for _, node := range nodes {
@@ -360,8 +364,11 @@ servicenode=1
 servicenodeaddr=` + fmt.Sprintf("%s:%s", localIP, cnode.Port) + `
 servicenodeprivkey=` + snodeKey + `
 `
-	} else { // support staking on non-servicenode clients
+	} else if currentNode == Activator { // support staking on non-servicenode clients
 		base += `staking=1
+`
+	} else { // disable staking on other clients
+		base += `staking=0
 `
 	}
 	return base
@@ -378,7 +385,7 @@ func XBridgeConf(wallets []XWallet) string {
 
 // TestBlocknetConf
 func TestBlocknetConf(containers []Node) string {
-	return BlocknetdxConf(-1, containers, "")
+	return BlocknetdxConf(-1, containers, true, "")
 }
 
 // TestBlocknetConfFile returns the path to the test blocknetdx.conf.

@@ -240,7 +240,7 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 	}
 
 	// Update activator blocknetdx.conf
-	blocknetConfActivator := BlocknetdxConf(Activator, env.config.Nodes, "")
+	blocknetConfActivator := BlocknetdxConf(Activator, env.config.Nodes, true, "")
 	if bufActivator, err := util.CreateTar(map[string][]byte{"blocknetdx.conf": []byte(blocknetConfActivator)}); err == nil {
 		if err := docker.CopyToContainer(ctx, activatorC.ID, "/opt/blockchain/config/", bufActivator, types.CopyToContainerOptions{}); err != nil {
 			return errors.Wrap(err, "Failed to write blocknetdx.conf to activator")
@@ -256,7 +256,7 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 		ssnC := containers.FindContainer(env.docker, sn.Name)
 
 		// Update servicenodes blocknetdx.conf
-		blocknetConfSn := BlocknetdxConf(ssn.ID, env.config.Nodes, ssn.Key)
+		blocknetConfSn := BlocknetdxConf(ssn.ID, env.config.Nodes, true, ssn.Key)
 		if bufSn, err := util.CreateTar(map[string][]byte{"blocknetdx.conf": []byte(blocknetConfSn)}); err == nil {
 			if err := docker.CopyToContainer(ctx, ssnC.ID, "/opt/blockchain/config/", bufSn, types.CopyToContainerOptions{}); err != nil {
 				return errors.Wrapf(err, "Failed to write blocknetdx.conf to %s", sn.ShortName)
