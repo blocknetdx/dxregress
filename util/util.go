@@ -22,6 +22,8 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+
+	"github.com/sirupsen/logrus"
 )
 
 // FileExists returns true if the path exists.
@@ -63,20 +65,19 @@ func GetExecCmdConcat() string {
 }
 
 // GetLocalIP returns the first local ip address found
+var localIP string
 func GetLocalIP() string {
-	addresses, err := net.InterfaceAddrs()
+	if localIP != "" {
+		return localIP
+	}
+	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
+		logrus.Error(err)
 		return ""
 	}
-	for _, addr := range addresses {
-		// ignore loopback
-		if ip, ok := addr.(*net.IPNet); ok && !ip.IP.IsLoopback() {
-			if ip.IP.To4() != nil {
-				return ip.IP.String()
-			}
-		}
-	}
-	return ""
+	defer conn.Close()
+	localIP = conn.LocalAddr().(*net.UDPAddr).IP.String()
+	return localIP
 }
 
 // Get24CIDR returns the /24 CIDR for the specified ip address.
