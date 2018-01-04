@@ -256,7 +256,8 @@ RUN mkdir -p /tmp/berkeley \
   && ../dist/configure --enable-cxx --disable-shared --with-pic --prefix=/tmp/berkeley \
   && make install
 
-COPY . /opt/blocknetdx/BlockDX/
+# Copy local source
+COPY --chown=root:root . /opt/blocknetdx/BlockDX/
 
 # Build source
 RUN mkdir -p /opt/blockchain/config \

@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/BlocknetDX/dxregress/chain"
@@ -36,9 +37,14 @@ var localenvUpCmd = &cobra.Command{
 	Long:  `The path to the codebase must be specified in the command.`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		var err error
 		// Obtain the codebase directory
-		localenvCodeDir = args[0]
-		if !util.FileExists(localenvCodeDir) {
+		localenvCodeDir, err := filepath.Abs(args[0])
+		if err != nil {
+			logrus.Errorf("Invalid codebase directory: %s", localenvCodeDir)
+			stop()
+			return
+		} else if _, err := os.Stat(localenvCodeDir); os.IsNotExist(err) {
 			logrus.Errorf("Invalid codebase directory: %s", localenvCodeDir)
 			stop()
 			return
@@ -80,7 +86,6 @@ var localenvUpCmd = &cobra.Command{
 		activator := chain.NodeForID(chain.Activator, localNodes)
 
 		// Build container image
-		var err error
 		docker, err := client.NewEnvClient()
 		if err != nil {
 			logrus.Error(err)
