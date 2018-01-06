@@ -15,6 +15,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -34,7 +35,8 @@ import (
 var localenvUpCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Create a regression test environment from a local codebase",
-	Long:  `The path to the codebase must be specified in the command.`,
+	Long:  `An environment with an activator, servicenode, and two BLOCK traders will
+be setup for regression testing. The path to the codebase must be specified in the command.`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		var err error
@@ -51,17 +53,32 @@ var localenvUpCmd = &cobra.Command{
 		}
 
 		// Create localenv nodes
-		var localNodes = []chain.Node{
-			{chain.Activator, "activator", chain.NodeContainerName(localenvPrefix, "activator"), "41477", "41427", "41487", chain.GetPortMap("41477", "41476", "41427", "41419", "41487", "41475"), "blocknetdx-cli", false},
-			{chain.Sn1, "sn1", chain.NodeContainerName(localenvPrefix, "sn1"), "41478", "41428", "41488", chain.GetPortMap("41478", "41476", "41428", "41419", "41488", "41475"), "blocknetdx-cli", true},
-		}
+		var localNodes = chain.DefaultLocalNodes(localenvPrefix)
 		var xwallets []chain.XWallet
 		var xwalletNodes []chain.Node
+
+		// Setup trader wallets
+		for _, node := range localNodes {
+			if node.ID != chain.Trader {
+				continue
+			}
+			wallet, err := chain.XWalletForCmdParameter(fmt.Sprintf("%s,%s,%s,%s", "BLOCK", node.Address, "localenv", "test"))
+			if err != nil || !chain.SupportsWallet(wallet.Name) {
+				logrus.Errorf("Unsupported wallet %s", wallet.Name)
+				stop()
+				return
+			}
+			wallet.Port = node.Port
+			wallet.RPCPort = node.RPCPort
+			wallet.BringOwn = true
+			xwallets = append(xwallets, wallet)
+		}
 
 		// Check that wallets are valid
 		if len(p_wallets) == 0 {
 			logrus.Warn("No wallets specified. Use the --wallet flag: -w=SYS,address,rpcuser,rpcpassword,wallet-rpc-ipaddress(optional)")
 		}
+		// Setup xwallets
 		for _, cmdWallet := range p_wallets {
 			wallet, err := chain.XWalletForCmdParameter(cmdWallet)
 			if err != nil || !chain.SupportsWallet(wallet.Name) {

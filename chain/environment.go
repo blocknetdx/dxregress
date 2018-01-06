@@ -16,6 +16,7 @@ package chain
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -127,17 +128,27 @@ func (env *TestEnv) Stop(ctx context.Context) error {
 
 // setupChain will setup the DX environment, copy all configuration files, test RPC connectivity.
 func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error {
-	// activator wallet address: y5zBd8oLQSnTjChTUCfRieTAp5Z31bRwEV key: cQiWHyehhhsRFYadBpj5wQRU9HU23GtHSjyPY2hBLccHWeNq6iTY
-	// sn1 alias address: y3DT9bZ69AjvdQFzYTCSpFgT9wJcRpHi7T key: cRdLcWroNyJPJ1BH4Q24pamDQtE3JNdm7tGQoD6mm9brqpYuX1dC
-	// sn2 alias address: yF2E6wPBc1YosrGUMhgoet5zPat1A4Z87d key: cMn9aiQGBYqeRzRuTFAModv459UQNxGsXkgPSRQ1W7XwGdGCp1JB
-
 	// Nodes
 	activator := env.config.Activator
 	snodes := ServiceNodes(env.config.Nodes)
 	activatorC := containers.FindContainer(docker, activator.Name)
 
+	// Import all wallet address
+	for _, node := range env.config.Nodes {
+		// skip nodes without wallets
+		if node.AddressKey == "" {
+			continue
+		}
+		cmd := RPCCommand(node.Name, node.CLI, fmt.Sprintf("importprivkey %s coin", node.AddressKey))
+		if output, err := cmd.Output(); err != nil {
+			return errors.Wrapf(err, "Failed to import wallet address %s to %s", node.Address, node.Name)
+		} else {
+			logrus.Debug(string(output))
+		}
+	}
+
 	// First import test address into alias and then generate test coin
-	cmd := BlockRPCCommands(activator.Name, []string{"importprivkey cQiWHyehhhsRFYadBpj5wQRU9HU23GtHSjyPY2hBLccHWeNq6iTY coin", "setgenerate true 25"})
+	cmd := BlockRPCCommand(activator.Name, "setgenerate true 25")
 	if output, err := cmd.Output(); err != nil || string(output) == "" {
 		if err != nil {
 			return errors.Wrap(err, "Failed to generate first 25 blocks")
@@ -156,22 +167,43 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 		logrus.Debug(string(output))
 	}
 
-	// Send 5k servicenode coin to each alias
-	cmd3 := BlockRPCCommands(activator.Name, []string{"sendtoaddress y3DT9bZ69AjvdQFzYTCSpFgT9wJcRpHi7T 5000", "sendtoaddress yF2E6wPBc1YosrGUMhgoet5zPat1A4Z87d 5000"})
-	if output, err := cmd3.Output(); err != nil {
-		return errors.Wrap(err, "Failed to send 5k servicenode coin")
-	} else {
-		logrus.Debug(string(output))
+	// Send coin to traders
+	for _, node := range env.config.Nodes {
+		if node.ID != Trader {
+			continue
+		}
+		var cmds []string
+		for i := 0; i < 20; i++ {
+			cmds = append(cmds, fmt.Sprintf("sendtoaddress %s 500", node.Address))
+		}
+		cmd := BlockRPCCommands(activator.Name, cmds)
+		if output, err := cmd.Output(); err != nil {
+			return errors.Wrapf(err, "Failed to send coin from activator to %s", node.Name)
+		} else {
+			logrus.Debug(string(output))
+		}
 	}
 
 	// Break up 10K inputs into 2.5k inputs to help with staking
 	cmd4S := make([]string, 75)
 	for i := 0; i < len(cmd4S); i++ {
-		cmd4S[i] = "sendtoaddress y5zBd8oLQSnTjChTUCfRieTAp5Z31bRwEV 2500"
+		cmd4S[i] = fmt.Sprintf("sendtoaddress %s 2500", activator.Address)
 	}
 	cmd4 := BlockRPCCommands(activator.Name, cmd4S)
 	if output, err := cmd4.Output(); err != nil {
 		return errors.Wrap(err, "Failed to split coin")
+	} else {
+		logrus.Debug(string(output))
+	}
+
+	// Send 5k servicenode coin to each alias
+	var snodeInputCmds []string
+	for _, snode := range snodes {
+		snodeInputCmds = append(snodeInputCmds, fmt.Sprintf("sendtoaddress %s 5000", snode.Address))
+	}
+	cmd5k := BlockRPCCommands(activator.Name, snodeInputCmds)
+	if output, err := cmd5k.Output(); err != nil {
+		return errors.Wrap(err, "Failed to send 5k servicenode coin")
 	} else {
 		logrus.Debug(string(output))
 	}
@@ -212,14 +244,14 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 
 	// Create servicenode specific data provider
 	var servicenodes []SNode
-	for i, snode := range snodes {
+	for j, snode := range snodes {
 		ssn := SNode{
 			ID: snode.ID,
 			Alias: snode.ShortName,
 			IP: snode.IP(),
-			Key: keys[i],
-			CollateralID: outputs[i].TxID,
-			CollateralPos: strconv.Itoa(outputs[i].TxPos),
+			Key: keys[j],
+			CollateralID: outputs[j].TxID,
+			CollateralPos: strconv.Itoa(outputs[j].TxPos),
 		}
 		servicenodes = append(servicenodes, ssn)
 	}
@@ -239,14 +271,20 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 		return errors.Wrap(err, "Failed to write servicenode.conf to activator")
 	}
 
-	// Update activator blocknetdx.conf
-	blocknetConfActivator := BlocknetdxConf(Activator, env.config.Nodes, true, "")
-	if bufActivator, err := util.CreateTar(map[string][]byte{"blocknetdx.conf": []byte(blocknetConfActivator)}); err == nil {
-		if err := docker.CopyToContainer(ctx, activatorC.ID, "/opt/blockchain/config/", bufActivator, types.CopyToContainerOptions{}); err != nil {
-			return errors.Wrap(err, "Failed to write blocknetdx.conf to activator")
+	// Update blocknetdx.conf on nodes (skip servicenodes)
+	for _, node := range env.config.Nodes {
+		if node.IsSnode {
+			continue
 		}
-	} else {
-		return errors.Wrap(err, "Failed to write blocknetdx.conf to activator")
+		nodeC := containers.FindContainer(docker, node.Name)
+		blocknetConf := BlocknetdxConf(node, env.config.Nodes, true, "")
+		if buf, err := util.CreateTar(map[string][]byte{"blocknetdx.conf": []byte(blocknetConf)}); err == nil {
+			if err := docker.CopyToContainer(ctx, nodeC.ID, "/opt/blockchain/config/", buf, types.CopyToContainerOptions{}); err != nil {
+				return errors.Wrapf(err, "Failed to write blocknetdx.conf to %s", node.Name)
+			}
+		} else {
+			return errors.Wrapf(err, "Failed to write blocknetdx.conf to %s", node.Name)
+		}
 	}
 
 	// Copy config files to servicenodes
@@ -256,7 +294,7 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 		ssnC := containers.FindContainer(env.docker, sn.Name)
 
 		// Update servicenodes blocknetdx.conf
-		blocknetConfSn := BlocknetdxConf(ssn.ID, env.config.Nodes, true, ssn.Key)
+		blocknetConfSn := BlocknetdxConf(sn, env.config.Nodes, true, ssn.Key)
 		if bufSn, err := util.CreateTar(map[string][]byte{"blocknetdx.conf": []byte(blocknetConfSn)}); err == nil {
 			if err := docker.CopyToContainer(ctx, ssnC.ID, "/opt/blockchain/config/", bufSn, types.CopyToContainerOptions{}); err != nil {
 				return errors.Wrapf(err, "Failed to write blocknetdx.conf to %s", sn.ShortName)
@@ -285,6 +323,9 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 		return err
 	}
 	if err := containers.RestartContainers(ctx, docker, env.config.ContainerFilterFunc("act")); err != nil {
+		return err
+	}
+	if err := containers.RestartContainers(ctx, docker, env.config.ContainerFilterFunc("trader")); err != nil {
 		return err
 	}
 

@@ -33,8 +33,8 @@ import (
 
 const (
 	Activator = iota
-	Sn1
-	Sn2
+	Servicenode
+	Trader
 )
 
 type Node struct {
@@ -46,6 +46,8 @@ type Node struct {
 	DebuggerPort string
 	Ports        nat.PortMap
 	CLI          string
+	Address      string
+	AddressKey   string
 	IsSnode      bool
 }
 
@@ -187,6 +189,8 @@ func NodeForWallet(xwallet XWallet, containerPrefix string) Node {
 		debugPort,
 		GetPortMap(xwallet.Port, xwallet.Port, xwallet.RPCPort, xwallet.RPCPort, debugPort, debugPort),
 		xwallet.CLI,
+		"",
+		"",
 		false,
 	}
 }
@@ -257,7 +261,7 @@ RUN mkdir -p /tmp/berkeley \
   && make install
 
 # Copy local source
-COPY --chown=root:root . /opt/blocknetdx/BlockDX/
+COPY . /opt/blocknetdx/BlockDX/
 
 # Build source
 RUN mkdir -p /opt/blockchain/config \
@@ -278,8 +282,8 @@ RUN cd /opt/blocknetdx/BlockDX \
 RUN echo "datadir=/opt/blockchain/dxregress \n\
                                             \n\
 testnet=1                                   \n\
-dbcache=256                                 \n\
-maxmempool=512                              \n\
+#dbcache=256                                \n\
+#maxmempool=512                             \n\
                                             \n\
 port=41476                                  \n\
 rpcport=41419                               \n\
@@ -316,7 +320,7 @@ func ServicenodeConf(snodes []SNode) string {
 }
 
 // BlocknetdxConf returns a blocknetdx.conf with the specified parameters.
-func BlocknetdxConf(currentNode int, nodes []Node, connectLocalenv bool, snodeKey string) string {
+func BlocknetdxConf(currentNode Node, nodes []Node, connectLocalenv bool, snodeKey string) string {
 	base := `datadir=/opt/blockchain/dxregress
 testnet=1
 dbcache=256
@@ -348,7 +352,7 @@ rpcclienttimeout=15
 	var cnode Node
 	for _, node := range nodes {
 		// do not addnode to self
-		if node.ID == currentNode {
+		if node.Name == currentNode.Name {
 			cnode = node
 			continue
 		}
@@ -364,7 +368,7 @@ servicenode=1
 servicenodeaddr=` + fmt.Sprintf("%s:%s", localIP, cnode.Port) + `
 servicenodeprivkey=` + snodeKey + `
 `
-	} else if currentNode == Activator { // support staking on non-servicenode clients
+	} else if currentNode.ID == Activator { // support staking on non-servicenode clients
 		base += `staking=1
 `
 	} else { // disable staking on other clients
@@ -385,7 +389,7 @@ func XBridgeConf(wallets []XWallet) string {
 
 // TestBlocknetConf
 func TestBlocknetConf(containers []Node) string {
-	return BlocknetdxConf(-1, containers, true, "")
+	return BlocknetdxConf(Node{}, containers, true, "")
 }
 
 // TestBlocknetConfFile returns the path to the test blocknetdx.conf.
@@ -412,4 +416,62 @@ func ServiceNodes(nodes []Node) []Node {
 		}
 	}
 	return snodes
+}
+
+// DefaultLocalNodes returns the base node configuration.
+func DefaultLocalNodes(namePrefix string) []Node {
+	activator := Node{
+		Activator,
+		"activator",
+		NodeContainerName(namePrefix, "activator"),
+		"41477",
+		"41427",
+		"41487",
+		GetPortMap("41477", "41476", "41427", "41419", "41487", "41475"),
+		"blocknetdx-cli",
+		"y5zBd8oLQSnTjChTUCfRieTAp5Z31bRwEV",
+		"cQiWHyehhhsRFYadBpj5wQRU9HU23GtHSjyPY2hBLccHWeNq6iTY",
+		false,
+	}
+	servicenode := Node{
+		Servicenode,
+		"sn1",
+		NodeContainerName(namePrefix, "sn1"),
+		"41478",
+		"41428",
+		"41488",
+		GetPortMap("41478", "41476", "41428", "41419", "41488", "41475"),
+		"blocknetdx-cli",
+		"y3DT9bZ69AjvdQFzYTCSpFgT9wJcRpHi7T",
+		"cRdLcWroNyJPJ1BH4Q24pamDQtE3JNdm7tGQoD6mm9brqpYuX1dC",
+		true,
+	}
+	trader1 := Node{
+		Trader,
+		"trader1",
+		NodeContainerName(namePrefix, "trader1"),
+		"41479",
+		"41429",
+		"41489",
+		GetPortMap("41479", "41476", "41429", "41419", "41489", "41475"),
+		"blocknetdx-cli",
+		"y6rmCC9VZ3PTeA6gNTVxaho4K8czHxfSkm",
+		"cV7dw3d7rC1XzH5GAT8ybu14g3YKHDVMpviav2vCMzWd1hAvKPLJ",
+		false,
+	}
+	trader2 := Node{
+		Trader,
+		"trader2",
+		NodeContainerName(namePrefix, "trader2"),
+		"41480",
+		"41430",
+		"41490",
+		GetPortMap("41480", "41476", "41430", "41419", "41490", "41475"),
+		"blocknetdx-cli",
+		"yHvJi4UAedW9f6eX8dvzqBBoZLkjVHsPQL",
+		"cQrKmHnct9MQn9W2mnsFTyu83EheWJTCxmDW8AjhMQX3Mv5q216z",
+		false,
+	}
+
+	return []Node{ activator, servicenode, trader1, trader2 }
 }

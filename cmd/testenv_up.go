@@ -15,6 +15,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
 	"path"
@@ -47,12 +48,26 @@ their own blockchain, separate from both mainnet and testnet.'`,
 		}
 
 		// Create testenv nodes
-		var localNodes = []chain.Node{
-			{chain.Activator, "activator", chain.NodeContainerName(testenvPrefix, "activator"), "41477", "41427", "41487", chain.GetPortMap("41477", "41476", "41427", "41419", "41487", "41475"), "blocknetdx-cli", false},
-			{chain.Sn1, "sn1", chain.NodeContainerName(testenvPrefix, "sn1"), "41478", "41428", "41488", chain.GetPortMap("41478", "41476", "41428", "41419", "41488", "41475"), "blocknetdx-cli", true},
-		}
+		var localNodes = chain.DefaultLocalNodes(testenvPrefix)
 		var xwallets []chain.XWallet
 		var xwalletNodes []chain.Node
+
+		// Setup trader wallets
+		for _, node := range localNodes {
+			if node.ID != chain.Trader {
+				continue
+			}
+			wallet, err := chain.XWalletForCmdParameter(fmt.Sprintf("%s,%s,%s,%s", "BLOCK", node.Address, "localenv", "test"))
+			if err != nil || !chain.SupportsWallet(wallet.Name) {
+				logrus.Errorf("Unsupported wallet %s", wallet.Name)
+				stop()
+				return
+			}
+			wallet.Port = node.Port
+			wallet.RPCPort = node.RPCPort
+			wallet.BringOwn = true
+			xwallets = append(xwallets, wallet)
+		}
 
 		// Check that wallets are valid
 		if len(p_wallets) == 0 {
