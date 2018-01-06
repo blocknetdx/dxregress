@@ -333,6 +333,7 @@ listen=1
 server=1
 logtimestamps=1
 logips=1
+enableaccounts=1
 
 rpcuser=localenv
 rpcpassword=test
