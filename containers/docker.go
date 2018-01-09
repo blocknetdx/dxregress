@@ -137,6 +137,10 @@ func CreateAndStart(ctx context.Context, docker *client.Client, image, name stri
 	}
 	hcfg := container.HostConfig{
 		PortBindings: ports,
+		Resources: container.Resources{
+			Memory: 256*1024*1024, // 256MiB
+			MemorySwap: 256*1024*1024, // disable swap
+		},
 	}
 	ncfg := network.NetworkingConfig{}
 	nameFilter := filters.NewArgs()
@@ -148,7 +152,7 @@ func CreateAndStart(ctx context.Context, docker *client.Client, image, name stri
 			return errors.Wrapf(err, "Failed to pull image %s", image)
 		} else {
 			logrus.Infof("Pulling image %s, this may take a few minutes...", image)
-			if viper.GetBool("DEBUG") {
+			if viper.GetBool("DEBUG") { // show output if debug is enabled
 				io.Copy(os.Stdout, out)
 			} else {
 				io.Copy(ioutil.Discard, out)
