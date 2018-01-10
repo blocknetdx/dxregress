@@ -236,8 +236,8 @@ func BTC(wallet XWallet) string {
 	return `[BTC]
 Title=Bitcoin
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.Port + ` # 8332
+Ip=` + wallet.IP + `
+Port=` + wallet.Port + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=0
@@ -262,8 +262,8 @@ func LTC(wallet XWallet) string {
 	return `[LTC]
 Title=Litecoin
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 9332
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=48
@@ -288,8 +288,8 @@ func SYS(wallet XWallet) string {
 	return `[SYS]
 Title=SysCoin2
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 8370
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=0
@@ -314,8 +314,8 @@ func DASH(wallet XWallet) string {
 	return `[DASH]
 Title=Dash
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 9998
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=76
@@ -340,8 +340,8 @@ func DGB(wallet XWallet) string {
 	return `[DGB]
 Title=Digibyte
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 14022
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=30
@@ -366,8 +366,8 @@ func DYN(wallet XWallet) string {
 	return `[DYN]
 Title=Dynamic
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 31350
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=30
@@ -392,8 +392,8 @@ func DOGE(wallet XWallet) string {
 	return `[DOGE]
 Title=Dogecoin
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 22555
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=30
@@ -418,8 +418,8 @@ func PIVX(wallet XWallet) string {
 	return `[PIVX]
 Title=Pivx
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 51473
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=30
@@ -444,8 +444,8 @@ func VIA(wallet XWallet) string {
 	return `[VIA]
 Title=Viacoin
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 5222
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=71
@@ -470,8 +470,8 @@ func VTC(wallet XWallet) string {
 	return `[VTC]
 Title=Vertcoin
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 5888
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=71
@@ -496,8 +496,8 @@ func MUE(wallet XWallet) string {
 	return `[MUE]
 Title=MonetaryUnit
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 29683
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=16
@@ -522,8 +522,8 @@ func NMC(wallet XWallet) string {
 	return `[NMC]
 Title=Namecoin
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 8336
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=52
@@ -548,8 +548,8 @@ func QTUM(wallet XWallet) string {
 	return `[QTUM]
 Title=Qtum
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 3889 testnet port
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=58
@@ -574,8 +574,8 @@ func LBC(wallet XWallet) string {
 	return `[LBC]
 Title=LBRY Credits
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 9245
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=85
@@ -600,8 +600,8 @@ func MONA(wallet XWallet) string {
 	return `[MONA]
 Title=Monacoin
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 9402
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=50
@@ -626,8 +626,8 @@ func BLOCK(wallet XWallet) string {
 	return `[BLOCK]
 Title=Blocknet
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 41414
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=26
@@ -652,8 +652,8 @@ func FAIR(wallet XWallet) string {
 	return `[FAIR]
 Title=Faircoin
 Address=` + wallet.Address + `
-Ip=` + wallet.IP + ` # 127.0.0.1
-Port=` + wallet.RPCPort + ` # 40405
+Ip=` + wallet.IP + `
+Port=` + wallet.RPCPort + `
 Username=` + wallet.RPCUser + `
 Password=` + wallet.RPCPass + `
 AddressPrefix=95
