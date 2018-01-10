@@ -137,10 +137,17 @@ func CreateAndStart(ctx context.Context, docker *client.Client, image, name stri
 	}
 	hcfg := container.HostConfig{
 		PortBindings: ports,
-		Resources: container.Resources{
-			Memory: 256*1024*1024, // 256MiB
-			MemorySwap: 256*1024*1024, // disable swap
-		},
+	}
+	var defaultMemory int64 = 1024*1024*1024 // 1GiB
+	var defaultSwap int64 = 1.5*1024*1024*1024 // 1.5GiB
+	// only limit resources on blocknet clients
+	if strings.Contains(image, "dxregress-blocknet") {
+		defaultMemory = 256*1024*1024 // 256MiB
+		defaultSwap = 256*1024*1024 // 256MiB (disable swap)
+	}
+	hcfg.Resources = container.Resources{
+		Memory: defaultMemory,
+		MemorySwap: defaultSwap,
 	}
 	ncfg := network.NetworkingConfig{}
 	nameFilter := filters.NewArgs()
