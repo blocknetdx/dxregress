@@ -102,7 +102,7 @@ to the codebase must be specified in the command.`,
 
 		activator := chain.NodeForID(chain.Activator, localNodes)
 
-		// Build container image
+		// Create docker client
 		docker, err := client.NewEnvClient()
 		if err != nil {
 			logrus.Error(err)
