@@ -104,6 +104,7 @@ their own blockchain, separate from both mainnet and testnet.'`,
 			stop()
 			return
 		}
+		defer docker.Close()
 
 		// Path to testenv config dir
 		configPath := path.Join(getConfigPath(), "testenv")
