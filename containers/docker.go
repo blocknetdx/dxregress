@@ -173,6 +173,58 @@ func CreateAndStart(ctx context.Context, docker *client.Client, image, name stri
 	return docker.ContainerStart(ctx, result.ID, types.ContainerStartOptions{})
 }
 
+// CreateContainer creates the container.
+func CreateContainer(ctx context.Context, docker *client.Client, image, name string, ports nat.PortMap) error {
+	cfg := container.Config{
+		Image: image,
+		User: "root:root",
+		Labels: map[string]string{
+			"co.blocknet.dxregress": "true",
+		},
+	}
+	hcfg := container.HostConfig{
+		PortBindings: ports,
+	}
+	var defaultMemory int64 = 1024*1024*1024 // 1GiB
+	var defaultSwap int64 = 1.5*1024*1024*1024 // 1.5GiB
+	// only limit resources on blocknet clients
+	if strings.Contains(image, "dxregress-blocknet") {
+		defaultMemory = 256*1024*1024 // 256MiB
+		defaultSwap = 256*1024*1024 // 256MiB (disable swap)
+	}
+	hcfg.Resources = container.Resources{
+		Memory: defaultMemory,
+		MemorySwap: defaultSwap,
+	}
+	ncfg := network.NetworkingConfig{}
+	nameFilter := filters.NewArgs()
+	nameFilter.Add("reference", image)
+	if images, err := docker.ImageList(ctx, types.ImageListOptions{Filters:nameFilter}); err != nil {
+		logrus.Error(errors.Wrapf(err, "Failed to query existing docker images"))
+	} else if len(images) == 0 {
+		if out, err := docker.ImagePull(ctx, image, types.ImagePullOptions{}); err != nil {
+			return errors.Wrapf(err, "Failed to pull image %s", image)
+		} else {
+			logrus.Infof("Pulling image %s, this may take a few minutes...", image)
+			if viper.GetBool("DEBUG") { // show output if debug is enabled
+				io.Copy(os.Stdout, out)
+			} else {
+				io.Copy(ioutil.Discard, out)
+			}
+		}
+	}
+	_, err := docker.ContainerCreate(ctx, &cfg, &hcfg, &ncfg, name)
+	if err != nil {
+		return errors.Wrapf(err, "Failed to create %s container [%s]", name, image)
+	}
+	return err
+}
+
+// StartContainer starts the container with the specified id.
+func StartContainer(ctx context.Context, docker *client.Client, id string) error {
+	return docker.ContainerStart(ctx, id, types.ContainerStartOptions{})
+}
+
 // StopContainer stops the container with the specified id.
 func StopContainer(ctx context.Context, docker *client.Client, id string) error {
 	dur := 30 * time.Second
