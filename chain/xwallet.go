@@ -64,21 +64,38 @@ var Wallets = map[string]string{
 }
 
 type XWallet struct {
-	Name      string
-	Address   string
-	IP        string
-	Port      string
-	RPCPort   string
-	RPCUser   string
-	RPCPass   string
-	Container string
-	Version   string
-	CLI       string
-	BringOwn  bool
+	Name       string
+	Address    string
+	IP         string
+	Port       string
+	RPCPort    string
+	RPCUser    string
+	RPCPass    string
+	AddressKey string
+	Container  string
+	Version    string
+	CLI        string
+	Conf       string
+	BringOwn   bool
 }
 
 func (w XWallet) IsNull() bool {
 	return w.Name == ""
+}
+
+func (w XWallet) HasConf() bool {
+	return w.Conf != ""
+}
+
+// AddRPC adds the xwallet rpc info to the specified conf file.
+func AddXWalletRPC(conf []byte, username, password string) []byte {
+	// TODO If rpcuser and rpcpassword already exists, skip
+	s := string(conf)
+	s += "\n"
+	s += "rpcallowip=0.0.0.0/0" + "\n"
+	s += "rpcuser=" + username + "\n"
+	s += "rpcpassword=" + password + "\n"
+	return []byte(s)
 }
 
 // SupportsWallet returns true if the wallet is supported.
@@ -88,7 +105,7 @@ func SupportsWallet(wallet string) bool {
 }
 
 // CreateXWallet returns the default wallet data.
-func CreateXWallet(coin, version, address, ip, rpcuser, rpcpass string, bringOwnWallet bool) XWallet {
+func CreateXWallet(coin, version, address, ip, rpcuser, rpcpass, addresskey string, bringOwnWallet bool) XWallet {
 	// TODO Update ports
 	getCoinVersion := func(repo, ver, defaultVersion string) string {
 		if ver == "" {
@@ -101,46 +118,46 @@ func CreateXWallet(coin, version, address, ip, rpcuser, rpcpass string, bringOwn
 	}
 	switch coin {
 	case WalletBTC:
-		return XWallet{coin, address, ip, "8333", "8332", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "8333", "8332", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "bitcoin.conf", bringOwnWallet}
 	case WalletLTC:
-		return XWallet{coin, address, ip, "9333", "9332", rpcuser, rpcpass, getCoinVersion("blocknetdx/litecoin", version, ""), version, "litecoin-cli", bringOwnWallet}
+		return XWallet{coin, address, ip, "9333", "9332", rpcuser, rpcpass, addresskey, getCoinVersion("blocknetdx/litecoin", version, ""), version, "litecoin-cli", "litecoin.conf", bringOwnWallet}
 	case WalletSYS:
-		return XWallet{coin, address, ip, "8369", "8370", rpcuser, rpcpass, getCoinVersion("blocknetdx/syscoin2", version, "2.1.6-snap500644"), version, "syscoin-cli", bringOwnWallet}
+		return XWallet{coin, address, ip, "8369", "8370", rpcuser, rpcpass, addresskey, getCoinVersion("blocknetdx/syscoin2", version, "2.1.6-snap593801"), version, "syscoin-cli", "syscoin.conf", bringOwnWallet}
 	case WalletDASH:
-		return XWallet{coin, address, ip, "", "9998", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "9998", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletDGB:
-		return XWallet{coin, address, ip, "", "14022", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "14022", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletDYN:
-		return XWallet{coin, address, ip, "", "31350", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "31350", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletDOGE:
-		return XWallet{coin, address, ip, "", "22555", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "22555", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletPIVX:
-		return XWallet{coin, address, ip, "", "51473", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "51473", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletVIA:
-		return XWallet{coin, address, ip, "", "5222", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "5222", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletVTC:
-		return XWallet{coin, address, ip, "", "5888", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "5888", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletMUE:
-		return XWallet{coin, address, ip, "", "29683", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "29683", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletNMC:
-		return XWallet{coin, address, ip, "", "8336", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "8336", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletQTUM:
-		return XWallet{coin, address, ip, "", "3889", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "3889", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletLBC:
-		return XWallet{coin, address, ip, "", "9245", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "9245", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	case WalletMONA:
-		return XWallet{coin, address, ip, "9401", "9402", rpcuser, rpcpass, getCoinVersion("blocknetdx/monacoin", version, "0.14.2-snap1193272"), version, "monacoin-cli", bringOwnWallet}
+		return XWallet{coin, address, ip, "9401", "9402", rpcuser, rpcpass, addresskey, getCoinVersion("blocknetdx/monacoin", version, "0.14.2-snap1255126"), version, "monacoin-cli", "monacoin.conf", bringOwnWallet}
 	case WalletBLOCK:
-		return XWallet{coin, address, ip, "41412", "41414", rpcuser, rpcpass, getCoinVersion("blocknetdx/servicenode", version, ""), version, "blocknetdx-cli", bringOwnWallet}
+		return XWallet{coin, address, ip, "41412", "41414", rpcuser, rpcpass, addresskey, getCoinVersion("blocknetdx/servicenode", version, ""), version, "blocknetdx-cli", "blocknetdx.conf", bringOwnWallet}
 	case WalletFAIR:
-		return XWallet{coin, address, ip, "", "40405", rpcuser, rpcpass, getCoinVersion("", version, ""), version, "Unspecified", bringOwnWallet}
+		return XWallet{coin, address, ip, "", "40405", rpcuser, rpcpass, addresskey, getCoinVersion("", version, ""), version, "Unspecified", "", bringOwnWallet}
 	}
 	return XWallet{}
 }
 
 // DefaultXConfig returns the default xbridge config for the specified coin.
-func DefaultXConfig(coin, version, address, ip, rpcuser, rpcpass string, bringOwnWallet bool) string {
-	wallet := CreateXWallet(coin, version, address, ip, rpcuser, rpcpass, bringOwnWallet)
+func DefaultXConfig(coin, version, address, ip, rpcuser, rpcpass, addresskey string, bringOwnWallet bool) string {
+	wallet := CreateXWallet(coin, version, address, ip, rpcuser, rpcpass, addresskey, bringOwnWallet)
 	switch coin {
 	case WalletBTC:
 		return BTC(wallet)
@@ -187,7 +204,7 @@ func XWalletForCmdParameter(cmdWallet string) (XWallet, error) {
 	// Remove all spaces from input
 	cmdArgs := strings.Split(strings.Replace(cmdWallet, " ", "", -1), ",")
 	if len(cmdArgs) < 4 {
-		return XWallet{}, errors.New("Incorrect wallet format, the correct format is: TICKER,address,rpcuser,rpcpassword,rpc-wallet-ipv4address(optional)")
+		return XWallet{}, errors.New("Incorrect wallet format, the correct format is: TICKER,address,rpcuser,rpcpassword,addresskey(optional),rpc-wallet-ipv4address(optional)")
 	}
 	i := 0
 	name := cmdArgs[i]; i++
@@ -200,7 +217,12 @@ func XWalletForCmdParameter(cmdWallet string) (XWallet, error) {
 	address := cmdArgs[i]; i++
 	rpcuser := cmdArgs[i]; i++
 	rpcpass := cmdArgs[i]; i++
-	// Bring own wallet flag
+	// Check for optional address key param
+	addresskey := ""
+	if i < len(cmdArgs) {
+		addresskey = cmdArgs[i]; i++
+	}
+	// Check for optional bring own wallet ip
 	bringOwnWallet := false
 	if i < len(cmdArgs) {
 		if ok, _ := regexp.MatchString(`\d+\.\d+\.\d+\.\d+`, cmdArgs[i]); !ok {
@@ -210,7 +232,7 @@ func XWalletForCmdParameter(cmdWallet string) (XWallet, error) {
 			bringOwnWallet = true
 		}
 	}
-	return CreateXWallet(name, "", address, ip, rpcuser, rpcpass, bringOwnWallet), nil
+	return CreateXWallet(name, "", address, ip, rpcuser, rpcpass, addresskey, bringOwnWallet), nil
 }
 
 // MAIN returns the main config section.
@@ -275,10 +297,10 @@ DustAmount=0
 CreateTxMethod=BTC
 GetNewKeySupported=false
 ImportWithNoScanSupported=true
-FeePerByte=110
-MinTxFee=60000
+FeePerByte=200
+MinTxFee=0
 TxVersion=1
-BlockTime=60
+BlockTime=150
 Confirmations=0
 `
 }
@@ -299,12 +321,12 @@ COIN=100000000
 MinimumAmount=0
 TxVersion=1
 DustAmount=0
-CreateTxMethod=BTC
-MinTxFee=60000
+CreateTxMethod=SYS
+MinTxFee=0
 BlockTime=60
 GetNewKeySupported=false
 ImportWithNoScanSupported=false
-FeePerByte=100
+FeePerByte=210
 Confirmations=0
 `
 }
@@ -614,9 +636,9 @@ DustAmount=0
 CreateTxMethod=BTC
 GetNewKeySupported=false
 ImportWithNoScanSupported=true
-MinTxFee=200000
+MinTxFee=0
 BlockTime=90
-FeePerByte=200
+FeePerByte=400
 Confirmations=0
 `
 }

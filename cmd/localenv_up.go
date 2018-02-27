@@ -35,8 +35,8 @@ import (
 var localenvUpCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Create a regression test environment from a local codebase",
-	Long:  `An environment with an activator, servicenode, and two BLOCK traders will
-be setup for regression testing. The path to the codebase must be specified in the command.`,
+	Long:  `An environment with an activator (staker) and servicenode setup for regression testing. The path 
+to the codebase must be specified in the command.`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		var err error
@@ -76,7 +76,7 @@ be setup for regression testing. The path to the codebase must be specified in t
 
 		// Check that wallets are valid
 		if len(p_wallets) == 0 {
-			logrus.Warn("No wallets specified. Use the --wallet flag: -w=SYS,address,rpcuser,rpcpassword,wallet-rpc-ipaddress(optional)")
+			logrus.Warn("No wallets specified. Use the --wallet flag: -w=SYS,address,rpcuser,rpcpassword,addresskey(optional),wallet-rpc-ipaddress(optional)")
 		}
 		// Setup xwallets
 		for _, cmdWallet := range p_wallets {
@@ -96,8 +96,8 @@ be setup for regression testing. The path to the codebase must be specified in t
 				continue
 			}
 			// Create node from xwallet
-			wc := chain.NodeForWallet(xwallet, localenvPrefix)
-			xwalletNodes = append(xwalletNodes, wc)
+			xn := chain.NodeForWallet(xwallet, localenvPrefix)
+			xwalletNodes = append(xwalletNodes, xn)
 		}
 
 		activator := chain.NodeForID(chain.Activator, localNodes)

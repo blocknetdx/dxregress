@@ -14,9 +14,12 @@
 package chain
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -85,27 +88,80 @@ func (env *TestEnv) Start(ctx context.Context) error {
 		}
 	}
 
-	// Start wallet containers
+	// Start xwallet containers
 	for _, w := range env.config.XWallets {
 		// Ignore BYOW nodes (bring your own wallet)
 		if w.BringOwn {
 			continue
 		}
 		// Create node from xwallet
-		wc := NodeForWallet(w, env.config.ContainerPrefix)
-		env.xwalletNodes = append(env.xwalletNodes, wc)
-		if err := containers.CreateAndStart(ctx, env.docker, w.Container, wc.Name, wc.Ports); err != nil {
+		xn := NodeForWallet(w, env.config.ContainerPrefix)
+		env.xwalletNodes = append(env.xwalletNodes, xn)
+		if err := containers.CreateContainer(ctx, env.docker, w.Container, xn.Name, xn.Ports); err != nil {
 			return err
 		}
-		if wc.DebuggerPort != "" {
-			logrus.Infof("%s node running on %s, rpc on %s, gdb/lldb port on %s", wc.Name, wc.Port, wc.RPCPort, wc.DebuggerPort)
+		if xn.DebuggerPort != "" {
+			logrus.Infof("%s node running on %s, rpc on %s, gdb/lldb port on %s", xn.Name, xn.Port, xn.RPCPort, xn.DebuggerPort)
 		} else {
-			logrus.Infof("%s node running on %s, rpc on %s", wc.Name, wc.Port, wc.RPCPort)
+			logrus.Infof("%s node running on %s, rpc on %s", xn.Name, xn.Port, xn.RPCPort)
+		}
+	}
+
+	// Import xwallet addresses if necessary
+	for _, xn := range env.xwalletNodes {
+		// Copy wallet conf
+		xC := containers.FindContainer(env.docker, xn.Name)
+		ctx2, cancel := context.WithTimeout(ctx, 10 * time.Second)
+		defer cancel()
+		rd, _, err := env.docker.CopyFromContainer(ctx2, xn.Name, fmt.Sprintf("/opt/blockchain/config/%s", xn.Conf))
+		if err != nil {
+			return errors.Wrapf(err, "Failed to copy %s from %s", xn.Conf, xn.Name)
+		}
+		defer rd.Close()
+
+		// Read xwallet conf
+		xwalletConf, err := readFromTar(xn.Conf, rd)
+		if err != nil {
+			return err
+		}
+
+		// Update xwallet conf
+		newWalletConf := AddXWalletRPC(xwalletConf, xn.RPCUser, xn.RPCPass)
+		tr := map[string][]byte{xn.Conf: newWalletConf}
+		if buf, err := util.CreateTar(tr); err == nil {
+			if err := env.docker.CopyToContainer(ctx, xC.ID, "/opt/blockchain/config/", buf, types.CopyToContainerOptions{}); err != nil {
+				return errors.Wrapf(err, "Failed to write %s to %s", xn.Conf, xn.Name)
+			}
+		} else {
+			return errors.Wrapf(err, "Failed to write %s to %s", xn.Conf, xn.Name)
+		}
+	}
+	// Start xwallet containers
+	for _, xn := range env.xwalletNodes {
+		xC := containers.FindContainer(env.docker, xn.Name)
+		if err := containers.StartContainer(ctx, env.docker, xC.ID); err != nil {
+			return err
+		}
+	}
+	logrus.Info("Waiting for xwallets to be ready...")
+	if err := WaitForEnv(ctx, 120, env.xwalletNodes); err != nil {
+		return err
+	}
+	for _, xn := range env.xwalletNodes {
+		// Import address if required
+		if xn.AddressKey == "" {
+			continue
+		}
+		cmd := RPCCommand(xn.Name, xn.CLI, fmt.Sprintf("importprivkey %s coin", xn.AddressKey))
+		if output, err := cmd.Output(); err != nil {
+			logrus.Error(errors.Wrapf(err, "Problem importing xwallet address %s in %s", xn.Address, xn.Name))
+		} else {
+			logrus.Debug(string(output))
 		}
 	}
 
 	logrus.Info("Waiting for nodes to be ready...")
-	if err := WaitForEnv(ctx, 45, env.config.Nodes); err != nil {
+	if err := WaitForEnv(ctx, 300, env.config.Nodes); err != nil {
 		return err
 	}
 
@@ -133,7 +189,7 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 	snodes := ServiceNodes(env.config.Nodes)
 	activatorC := containers.FindContainer(docker, activator.Name)
 
-	// Import all wallet address
+	// Import wallet addresses
 	for _, node := range env.config.Nodes {
 		// skip nodes without wallets
 		if node.AddressKey == "" {
@@ -148,15 +204,18 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 	}
 
 	// First import test address into alias and then generate test coin
-	cmd := BlockRPCCommand(activator.Name, "setgenerate true 25")
-	if output, err := cmd.Output(); err != nil || string(output) == "" {
-		if err != nil {
-			return errors.Wrap(err, "Failed to generate first 25 blocks")
+	for i := 0; i < 15; i++ {
+		cmd := BlockRPCCommand(activator.Name, "setgenerate true 1")
+		if output, err := cmd.Output(); err != nil || string(output) == "" {
+			if err != nil {
+				return errors.Wrap(err, "Failed to generate first 15 blocks")
+			} else {
+				return errors.New("Failed to generate first 15 blocks, empty output")
+			}
 		} else {
-			return errors.New("Failed to generate first 25 blocks, empty output")
+			logrus.Debug(string(output))
 		}
-	} else {
-		logrus.Debug(string(output))
+		time.Sleep(time.Second)
 	}
 
 	// Import alias addresses
@@ -185,7 +244,7 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 	}
 
 	// Break up 10K inputs into 2.5k inputs to help with staking
-	cmd4S := make([]string, 75)
+	cmd4S := make([]string, 25)
 	for i := 0; i < len(cmd4S); i++ {
 		cmd4S[i] = fmt.Sprintf("sendtoaddress %s 2500", activator.Address)
 	}
@@ -208,12 +267,15 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 		logrus.Debug(string(output))
 	}
 
-	// Generate last 25 PoW blocks
-	cmd5 := BlockRPCCommand(activator.Name, "setgenerate true 25")
-	if output, err := cmd5.Output(); err != nil {
-		return errors.Wrap(err, "Failed to generate blocks 25-50")
-	} else {
-		logrus.Debug(string(output))
+	// Generate last PoW blocks
+	for i := 0; i < 15; i++ {
+		cmd5 := BlockRPCCommand(activator.Name, "setgenerate true 1")
+		if output, err := cmd5.Output(); err != nil {
+			return errors.Wrap(err, "Failed to generate blocks 15-30")
+		} else {
+			logrus.Debug(string(output))
+		}
+		time.Sleep(time.Second)
 	}
 
 	// Obtain servicenode keys
@@ -257,7 +319,7 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 	}
 
 	// Max wait time for all commands below
-	ctx, cancel := context.WithTimeout(context.Background(), 180 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 600 * time.Second)
 	defer cancel()
 
 	// Generate activator servicenode.conf
@@ -325,14 +387,14 @@ func (env *TestEnv) setupChain(ctx context.Context, docker *client.Client) error
 	if err := containers.RestartContainers(ctx, docker, env.config.ContainerFilterFunc("act")); err != nil {
 		return err
 	}
-	if err := containers.RestartContainers(ctx, docker, env.config.ContainerFilterFunc("trader")); err != nil {
-		return err
-	}
+	//if err := containers.RestartContainers(ctx, docker, env.config.ContainerFilterFunc("trader")); err != nil {
+	//	return err
+	//}
 
 	// Wait for nodes to be ready
 	logrus.Info("Waiting for nodes and wallets to be ready...")
 	allContainers := append(env.config.Nodes, env.xwalletNodes...)
-	if err := WaitForEnv(ctx, 45, allContainers); err != nil {
+	if err := WaitForEnv(ctx, 500, allContainers); err != nil {
 		return err
 	}
 
@@ -374,4 +436,31 @@ func NewTestEnv(config *EnvConfig, docker *client.Client) *TestEnv {
 	env.config = config
 	env.docker = docker
 	return env
+}
+
+// readFromTar reads the specified file from the tar.
+func readFromTar(file string, tarFile io.Reader) ([]byte, error) {
+	tr := tar.NewReader(tarFile)
+	var fileBytes []byte
+	// Iterate over tar entries
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			return fileBytes, errors.Wrapf(err, "Failed to find %s", file)
+		} else if err != nil {
+			return fileBytes, errors.Wrapf(err, "Failed to read %s", file)
+		}
+		info := header.FileInfo()
+		// Check if file name match
+		if info.Name() == file {
+			var buf bytes.Buffer
+			if _, err := io.Copy(&buf, tr); err != nil {
+				return fileBytes, errors.Wrapf(err, "Failed to read %s", file)
+			}
+			// Read file bytes
+			fileBytes := buf.Bytes()
+			return fileBytes, nil
+		}
+	}
+	return fileBytes, errors.New("Failed to find " + file)
 }
